@@ -1,7 +1,22 @@
+import { useRef, useState } from "react";
+import { useModalA11y } from "../hooks/useModalA11y";
 import { describe, it, expect } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { GlobalKeyboardShortcuts } from "./GlobalKeyboardShortcuts";
+
+function DismissibleModal() {
+  const [open, setOpen] = useState(true);
+  const ref = useRef<HTMLDivElement>(null);
+  useModalA11y({ containerRef: ref, isOpen: open, onClose: () => setOpen(false) });
+  return open ? (
+    <div ref={ref} role="dialog" aria-modal="true" aria-label="Dismissible modal">
+      <button type="button" onClick={() => setOpen(false)}>
+        Close modal
+      </button>
+    </div>
+  ) : null;
+}
 
 function LocationDisplay() {
   const loc = useLocation();
@@ -346,6 +361,27 @@ describe("GlobalKeyboardShortcuts", () => {
     await waitFor(() => {}, { timeout: 100 });
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
     unmount();
+  });
+
+  it("lets a dialog owner dismiss Escape during bubbling without opening settings", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/execute"]}>
+        <GlobalKeyboardShortcuts />
+        <DismissibleModal />
+        <LocationDisplay />
+      </MemoryRouter>
+    );
+    const button = screen.getByRole("button", { name: "Close modal" });
+    button.focus();
+    await act(() =>
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Dismissible modal" })).not.toBeInTheDocument()
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/execute");
   });
 
   it("? opens project help when on a project route (same context as help icon)", async () => {

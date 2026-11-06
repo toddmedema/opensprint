@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { GlobalKeyboardShortcuts } from "../components/GlobalKeyboardShortcuts";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { QueryClient } from "@tanstack/react-query";
 import { ExecutePhase } from "../pages/phases/ExecutePhase";
 import { NAVBAR_HEIGHT } from "../lib/constants";
@@ -36,13 +37,19 @@ const reply = (data: unknown) => new Response(JSON.stringify({ data }), { status
 let fetchMock: ReturnType<typeof vi.fn>;
 let queryClient: QueryClient;
 
+function CurrentRoute() {
+  return <output aria-label="Current route">{useLocation().pathname}</output>;
+}
+
 function renderExecute() {
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return renderWithProviders(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={["/projects/project-a/execute"]}>
+      <GlobalKeyboardShortcuts />
       <ExecutePhase projectId="project-a" selectedTaskId="os-task" />
+      <CurrentRoute />
     </MemoryRouter>,
     {
       queryClient,
@@ -149,6 +156,31 @@ afterEach(() => {
 });
 
 describe("Execute collaboration dock", () => {
+  it("dismisses the mobile dock with Escape from button focus while global shortcuts are installed", async () => {
+    const restoreViewport = mockViewport(390, 844);
+    try {
+      const user = userEvent.setup();
+      renderExecute();
+      await user.click(
+        within(screen.getByTestId("execute-filter-toolbar")).getByRole("button", {
+          name: "Collaborate",
+        })
+      );
+      const panel = await screen.findByRole("dialog", { name: "Sidebar panel" });
+      await within(panel).findByRole("heading", { name: "Collaborate" });
+      within(panel).getByRole("button", { name: "Close sidebar" }).focus();
+      await user.keyboard("{Escape}");
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: "Sidebar panel" })).not.toBeInTheDocument()
+      );
+      expect(screen.getByLabelText("Current route")).toHaveTextContent(
+        "/projects/project-a/execute"
+      );
+    } finally {
+      restoreViewport();
+    }
+  });
+
   it("places the mobile dock below the Navbar and keeps its close action available", async () => {
     const restoreViewport = mockViewport(390, 844);
     try {

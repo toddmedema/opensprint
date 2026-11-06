@@ -127,7 +127,8 @@ export function GlobalKeyboardShortcuts() {
       // Escape: close modal if one is open; otherwise open settings.
       if (key === "Escape") {
         if (isModalOpen() || isFocusInModal(e)) {
-          e.preventDefault();
+          // The dialog owns dismissal. Cancelling during capture prevents its
+          // bubble-phase handler from distinguishing Escape from a consumed key.
           return;
         }
         if (projectId) {

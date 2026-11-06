@@ -835,6 +835,7 @@ export function ExecutePhase({
 
       {collaborationOpen ? (
         <ResizableSidebar
+          key="execute-collaboration"
           storageKey="execute-collaboration"
           defaultWidth={520}
           minWidth={320}
@@ -857,6 +858,7 @@ export function ExecutePhase({
       ) : (
         effectiveSelectedTask && (
           <ResizableSidebar
+            key="execute-task"
             storageKey="execute"
             defaultWidth={420}
             resizeHandleLabel="Resize task detail sidebar"
