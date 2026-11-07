@@ -9,6 +9,7 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { createLogger } from "../utils/logger.js";
 import type { DbClient } from "../db/client.js";
+import { retireCollaborationProject } from "../db/collaboration-lifecycle.js";
 import { classifyDbConnectionError, isDbConnectionError } from "../db/db-errors.js";
 import type { AppDb, DrizzlePg } from "../db/app-db.js";
 import { initAppDb } from "../db/app-db.js";
@@ -1212,6 +1213,28 @@ export class TaskStoreService {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
       const client = this.ensureClient();
+      // Retire the ID before any other project cleanup. Every collaboration
+      // writer takes this durable row lock, so an already admitted request
+      // cannot recreate state after deletion, even through another connection.
+      await client.runInTransaction(async (tx) => {
+        await retireCollaborationProject(tx, projectId);
+        for (const table of [
+          "collaboration_control_request_events",
+          "collaboration_control_requests",
+          "collaboration_run_context",
+          "collaboration_message_context",
+          "collaboration_commands",
+          "collaboration_events",
+          "collaboration_messages",
+          "collaboration_runs",
+          "collaboration_invites",
+          "collaboration_presence",
+          "collaboration_preferences",
+          "collaboration_projects",
+        ]) {
+          await tx.execute(`DELETE FROM ${table} WHERE project_id = $1`, [projectId]);
+        }
+      });
       const rows = await client.query(toPgParams("SELECT id FROM tasks WHERE project_id = ?"), [
         projectId,
       ]);
@@ -1276,30 +1299,6 @@ export class TaskStoreService {
       await client.execute(toPgParams("DELETE FROM open_questions WHERE project_id = ?"), [
         projectId,
       ]);
-      // Collaboration tables deliberately have no project foreign keys. Serialize
-      // with their cursor-owning writers and remove credentials/state atomically.
-      await client.runInTransaction(async (tx) => {
-        await tx.execute(
-          "UPDATE collaboration_projects SET cursor = cursor WHERE project_id = $1",
-          [projectId]
-        );
-        for (const table of [
-          "collaboration_control_request_events",
-          "collaboration_control_requests",
-          "collaboration_run_context",
-          "collaboration_message_context",
-          "collaboration_commands",
-          "collaboration_events",
-          "collaboration_messages",
-          "collaboration_runs",
-          "collaboration_invites",
-          "collaboration_presence",
-          "collaboration_preferences",
-          "collaboration_projects",
-        ]) {
-          await tx.execute(`DELETE FROM ${table} WHERE project_id = $1`, [projectId]);
-        }
-      });
     });
   }
 

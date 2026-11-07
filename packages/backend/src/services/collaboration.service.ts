@@ -16,6 +16,7 @@ import type {
   CollaborationNotification,
 } from "@opensprint/shared";
 import type { DbClient, DbRow } from "../db/client.js";
+import { assertCollaborationProjectWritable } from "../db/collaboration-lifecycle.js";
 import { AppError } from "../middleware/error-handler.js";
 import { taskStore } from "./task-store.service.js";
 
@@ -147,6 +148,17 @@ function messageFromRow(row: DbRow): CollaborationMessage {
 export class CollaborationService {
   constructor(private readonly store: CollaborationStore = taskStore) {}
 
+  /** Reject retired IDs inside the same durable lock as project deletion and the entire mutation. */
+  private async runProjectWrite<T>(
+    projectId: string,
+    action: (tx: DbClient) => Promise<T>
+  ): Promise<T> {
+    return this.store.runWrite(async (tx) => {
+      await assertCollaborationProjectWritable(tx, projectId);
+      return action(tx);
+    });
+  }
+
   /** Resolve a hashed invitation only while its project membership is current. */
   async resolveInvite(projectId: string, token: string): Promise<CollaborationPrincipal | null> {
     if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) return null;
@@ -244,7 +256,7 @@ export class CollaborationService {
       expiresAt: new Date(now.getTime() + parsed.data.expiresInHours * 3600000).toISOString(),
       revokedAt: null,
     };
-    await this.store.runWrite(async (tx) => {
+    await this.runProjectWrite(projectId, async (tx) => {
       await tx.execute(
         "INSERT INTO collaboration_invites (project_id,id,actor_id,display_name,role,token_hash,created_at,expires_at,revoked_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL)",
         [
@@ -269,7 +281,7 @@ export class CollaborationService {
     inviteId: string
   ): Promise<void> {
     this.assertHost(principal);
-    await this.store.runWrite(async (tx) => {
+    await this.runProjectWrite(projectId, async (tx) => {
       const invite = await tx.queryOne(
         "SELECT * FROM collaboration_invites WHERE project_id = $1 AND id = $2",
         [projectId, inviteId]
@@ -312,7 +324,7 @@ export class CollaborationService {
     clientId: string,
     taskId: string | null
   ): Promise<void> {
-    await this.store.runWrite(async (tx) => {
+    await this.runProjectWrite(projectId, async (tx) => {
       await this.assertCurrentMembership(tx, projectId, principal);
       await tx.execute("DELETE FROM collaboration_presence WHERE last_seen_at <= $1", [
         new Date(Date.now() - 90_000).toISOString(),
@@ -338,7 +350,7 @@ export class CollaborationService {
     principal: CollaborationPrincipal,
     clientId: string
   ): Promise<void> {
-    await this.store.runWrite((tx) =>
+    await this.runProjectWrite(projectId, (tx) =>
       tx
         .execute(
           "DELETE FROM collaboration_presence WHERE project_id = $1 AND actor_id = $2 AND client_id = $3",
@@ -398,7 +410,7 @@ export class CollaborationService {
         "INVALID_COLLABORATION_PREFERENCES",
         "The seen timestamp must belong to an observed past snapshot."
       );
-    return this.store.runWrite(async (tx) => {
+    return this.runProjectWrite(projectId, async (tx) => {
       await this.assertCurrentMembership(tx, projectId, principal);
       await tx.execute(
         "INSERT INTO collaboration_projects (project_id,cursor) VALUES ($1,0) ON CONFLICT (project_id) DO NOTHING",
@@ -564,7 +576,7 @@ export class CollaborationService {
     runId: string,
     action: (revision: number) => Promise<T>
   ): Promise<T> {
-    return this.store.runWrite(async (tx) => {
+    return this.runProjectWrite(projectId, async (tx) => {
       await tx.execute(
         "INSERT INTO collaboration_projects (project_id, cursor) VALUES ($1, 0) ON CONFLICT (project_id) DO NOTHING",
         [projectId]
@@ -667,7 +679,7 @@ export class CollaborationService {
     if (command.type !== "append_message" && principal.role !== "controller")
       forbidden("Controller permission is required.");
     const fingerprint = createHash("sha256").update(JSON.stringify(command)).digest("hex");
-    return this.store.runWrite(async (tx) => {
+    return this.runProjectWrite(projectId, async (tx) => {
       await tx.execute(
         "INSERT INTO collaboration_projects (project_id, cursor) VALUES ($1, 0) ON CONFLICT (project_id) DO NOTHING",
         [projectId]

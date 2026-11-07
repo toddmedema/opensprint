@@ -53,6 +53,7 @@ describe.each(["sqlite", "postgres"] as const)("polished collaboration (%s)", (d
           "collaboration_invites",
           "collaboration_presence",
           "collaboration_preferences",
+          "collaboration_project_lifecycle",
         ])
           await tx.execute(`DELETE FROM ${table} WHERE project_id = $1`, [project]);
       });

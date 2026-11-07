@@ -128,6 +128,9 @@ describe.each(["sqlite", "postgres"] as const)("project collaboration deletion (
       for (const projectId of [project, otherProject]) {
         for (const table of tables)
           await client.execute(`DELETE FROM ${table} WHERE project_id = $1`, [projectId]);
+        await client.execute("DELETE FROM collaboration_project_lifecycle WHERE project_id=$1", [
+          projectId,
+        ]);
       }
       await db.close();
     }

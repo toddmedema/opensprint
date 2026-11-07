@@ -2,6 +2,10 @@ import type { DbClient } from "./client.js";
 
 /** Portable, additive schema. Project cursor row locks order commits on Postgres. */
 export const COLLABORATION_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS collaboration_project_lifecycle (
+  project_id TEXT PRIMARY KEY,
+  deleted_at TEXT
+);
 CREATE TABLE IF NOT EXISTS collaboration_projects (
   project_id TEXT PRIMARY KEY,
   cursor INTEGER NOT NULL DEFAULT 0
