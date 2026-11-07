@@ -25,6 +25,7 @@ import { execFile } from "child_process";
 import crypto from "crypto";
 import { appendDesktopCrashLog, setDesktopSessionId } from "./desktop-crash-log";
 import { buildSpaContentSecurityPolicyProduction } from "./spa-content-security-policy";
+import { getDesktopSqliteModulePath } from "./sqlite-runtime-path";
 
 import { autoUpdater } from "electron-updater";
 
@@ -40,8 +41,6 @@ const TRAY_FETCH_TIMEOUT_MS = 2500;
 const TRAY_INIT_RETRY_MS = 600;
 const DB_STARTUP_POLL_MS = 500;
 const DB_STARTUP_TIMEOUT_MS = 10000;
-const SQLITE_RUNTIME_DIR_NAME = "sqlite-runtime";
-const SQLITE_RUNTIME_MODULE_NAME = "better-sqlite3";
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -793,12 +792,11 @@ function startBackend(pathOverride?: string): ChildProcess {
     pathOverride !== undefined && pathOverride !== ""
       ? pathOverride
       : buildBackendPath(process.env.PATH ?? "");
-  const sqliteRuntimeDir = path.join(backendDir, SQLITE_RUNTIME_DIR_NAME);
-  const sqliteRuntimeModulePath = path.join(
-    sqliteRuntimeDir,
-    "node_modules",
-    SQLITE_RUNTIME_MODULE_NAME
-  );
+  const sqliteRuntimeModulePath = getDesktopSqliteModulePath({
+    isPackaged: app.isPackaged,
+    backendDir,
+    electronDistDir: __dirname,
+  });
   const hasSqliteRuntimeFallback = fs.existsSync(sqliteRuntimeModulePath);
   if (app.isPackaged && !hasSqliteRuntimeFallback) {
     console.warn(
