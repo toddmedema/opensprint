@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { CollaborationRole } from "@opensprint/shared";
 import type { CollaborationSessionState } from "./useCollaborationSession";
@@ -9,11 +9,11 @@ export const collaborationRoleLabels: Record<CollaborationRole, string> = {
   controller: "Can guide agents",
 };
 const field =
-  "w-full rounded-lg border border-theme-border bg-theme-bg px-3 py-2 text-sm text-theme-text";
+  "min-h-11 w-full rounded-lg border border-theme-border bg-theme-bg px-3 py-2 text-sm text-theme-text";
 
 /**
- * Let the host create or revoke named project access. Newly returned bearer secrets are
- * shown only in the current view and placed in link fragments rather than query parameters.
+ * Create one private invitation with safe defaults; advanced access and past invitations
+ * appear only when requested. The parent owns the Share sheet and its dismissal.
  */
 export function CollaborationInvites({
   session,
@@ -22,15 +22,19 @@ export function CollaborationInvites({
   session: CollaborationSessionState;
   projectId: string;
 }) {
+  const id = useId();
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<CollaborationRole>("participant");
   const [expiresInHours, setExpiresInHours] = useState(24);
   const [inviteLink, setInviteLink] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
+  const [manageOpen, setManageOpen] = useState(false);
+  const mayManage = session.principal?.actorId === "local-user";
   const invitationOrigin = session.overview.data?.shareOrigin ?? window.location.origin;
   const invites = useQuery({
     queryKey: [...session.queryKey, "invites"],
     queryFn: ({ signal }) => session.client.invites(signal),
+    enabled: mayManage && manageOpen,
     retry: false,
     gcTime: 0,
   });
@@ -43,7 +47,7 @@ export function CollaborationInvites({
       setInviteLink(url.toString());
       setDisplayName("");
       setCopyStatus("");
-      void invites.refetch();
+      if (manageOpen) void invites.refetch();
     },
   });
   const revoke = useMutation({
@@ -55,30 +59,22 @@ export function CollaborationInvites({
       void session.invalidate();
     },
   });
-  const error = invites.error ?? create.error ?? revoke.error;
+  const error = create.error ?? revoke.error ?? (manageOpen ? invites.error : null);
   const localOnly = ["localhost", "127.0.0.1", "[::1]"].includes(
     new URL(invitationOrigin).hostname
   );
+  if (!mayManage)
+    return <p className="text-sm text-theme-muted">Ask the host to manage project access.</p>;
   return (
     <section aria-label="Project invitations" className="space-y-4">
-      <div>
-        <h3 className="font-semibold text-theme-text">Invite to this project</h3>
-        <p className="mt-1 text-sm text-theme-muted">
-          Each person gets their own access and identity.
-        </p>
-      </div>
       {error && (
         <p role="alert" className="text-sm text-theme-error-text">
           {error.message}
         </p>
       )}
-      {session.overview.data?.shareOrigin && (
-        <p className="text-sm text-theme-muted">Invitations use {invitationOrigin}</p>
-      )}
       {localOnly && (
         <p className="rounded-lg bg-theme-surface-muted p-3 text-sm text-theme-muted">
-          This address is local to your computer. Teammates need a reachable host address to join;
-          invitations do not expose your installation to the network.
+          This link only works on this computer. Set up a reachable sharing address for teammates.
         </p>
       )}
       <form
@@ -100,49 +96,60 @@ export function CollaborationInvites({
             autoComplete="off"
           />
         </label>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm">
-            Access
-            <select
-              className={`${field} mt-1`}
-              value={role}
-              onChange={(event) => setRole(event.target.value as CollaborationRole)}
-            >
-              {Object.entries(collaborationRoleLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            Expires
-            <select
-              className={`${field} mt-1`}
-              value={expiresInHours}
-              onChange={(event) => setExpiresInHours(Number(event.target.value))}
-            >
-              <option value={1}>In 1 hour</option>
-              <option value={24}>In 24 hours</option>
-              <option value={168}>In 7 days</option>
-            </select>
-          </label>
-        </div>
+        <p className="text-xs text-theme-muted">
+          {collaborationRoleLabels[role]} · Expires in{" "}
+          {expiresInHours === 168
+            ? "7 days"
+            : `${expiresInHours} ${expiresInHours === 1 ? "hour" : "hours"}`}
+        </p>
+        <details className="text-sm">
+          <summary className="min-h-11 cursor-pointer py-3 text-theme-muted">
+            Access and expiry
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              Access
+              <select
+                className={`${field} mt-1`}
+                value={role}
+                onChange={(event) => setRole(event.target.value as CollaborationRole)}
+              >
+                {Object.entries(collaborationRoleLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              Expires
+              <select
+                className={`${field} mt-1`}
+                value={expiresInHours}
+                onChange={(event) => setExpiresInHours(Number(event.target.value))}
+              >
+                <option value={1}>In 1 hour</option>
+                <option value={24}>In 24 hours</option>
+                <option value={168}>In 7 days</option>
+              </select>
+            </label>
+          </div>
+        </details>
         <button
           type="submit"
-          className="btn-primary"
+          className="btn-primary min-h-11"
           disabled={create.isPending || !displayName.trim()}
         >
-          {create.isPending ? "Creating…" : "Create invite"}
+          {create.isPending ? "Creating…" : "Create invitation"}
         </button>
       </form>
       {inviteLink && (
         <div className="space-y-2 rounded-lg border border-theme-border p-3">
-          <label className="block text-sm" htmlFor="collaboration-invite-link">
+          <label className="block text-sm" htmlFor={`${id}-link`}>
             Private invitation link
           </label>
           <input
-            id="collaboration-invite-link"
+            id={`${id}-link`}
             className={field}
             value={inviteLink}
             readOnly
@@ -151,7 +158,7 @@ export function CollaborationInvites({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className="btn-secondary"
+              className="btn-primary min-h-11"
               onClick={() => {
                 if (!navigator.clipboard) {
                   setCopyStatus("Select the link above and copy it.");
@@ -165,7 +172,11 @@ export function CollaborationInvites({
             >
               Copy link
             </button>
-            <button type="button" className="btn-secondary" onClick={() => setInviteLink("")}>
+            <button
+              type="button"
+              className="btn-secondary min-h-11"
+              onClick={() => setInviteLink("")}
+            >
               Hide link
             </button>
           </div>
@@ -174,42 +185,56 @@ export function CollaborationInvites({
           </p>
         </div>
       )}
-      <ul aria-label="Invitations" className="divide-y divide-theme-border">
-        {invites.data?.map((invite) => {
-          const ended =
-            Boolean(invite.revokedAt) || new Date(invite.expiresAt).getTime() <= Date.now();
-          return (
-            <li key={invite.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-              <div>
-                <p className="text-sm font-medium">
-                  {invite.displayName} · {collaborationRoleLabels[invite.role]}
-                </p>
-                <p className="text-xs text-theme-muted">
-                  {invite.revokedAt
-                    ? "Revoked"
-                    : ended
-                      ? "Expired"
-                      : `Expires ${new Date(invite.expiresAt).toLocaleString()}`}
-                </p>
-              </div>
-              {!ended && (
-                <button
-                  className="btn-secondary"
-                  type="button"
-                  disabled={revoke.isPending}
-                  onClick={() => revoke.mutate(invite.id)}
-                  aria-label={`Revoke ${invite.displayName} invitation`}
-                >
-                  Revoke
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      {invites.isSuccess && invites.data.length === 0 && (
-        <p className="text-sm text-theme-muted">No invitations yet.</p>
-      )}
+      <details
+        className="border-t border-theme-border pt-3 text-sm"
+        onToggle={(event) => setManageOpen(event.currentTarget.open)}
+      >
+        <summary className="min-h-11 cursor-pointer py-3 text-theme-muted">Manage access</summary>
+        {invites.isPending && manageOpen && (
+          <p role="status" className="mt-3 text-theme-muted">
+            Loading invitations…
+          </p>
+        )}
+        <ul aria-label="Invitations" className="mt-2 divide-y divide-theme-border">
+          {invites.data?.map((invite) => {
+            const ended =
+              Boolean(invite.revokedAt) || new Date(invite.expiresAt).getTime() <= Date.now();
+            return (
+              <li
+                key={invite.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">
+                    {invite.displayName} · {collaborationRoleLabels[invite.role]}
+                  </p>
+                  <p className="text-xs text-theme-muted">
+                    {invite.revokedAt
+                      ? "Revoked"
+                      : ended
+                        ? "Expired"
+                        : `Expires ${new Date(invite.expiresAt).toLocaleString()}`}
+                  </p>
+                </div>
+                {!ended && (
+                  <button
+                    className="btn-secondary min-h-11"
+                    type="button"
+                    disabled={revoke.isPending}
+                    onClick={() => revoke.mutate(invite.id)}
+                    aria-label={`Revoke ${invite.displayName} invitation`}
+                  >
+                    Revoke
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        {invites.isSuccess && invites.data.length === 0 && (
+          <p className="mt-3 text-theme-muted">No invitations yet.</p>
+        )}
+      </details>
     </section>
   );
 }
