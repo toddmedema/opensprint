@@ -41,6 +41,7 @@ function CurrentRoute() {
   return <output aria-label="Current route">{useLocation().pathname}</output>;
 }
 
+/** Mount Execute with isolated queries and optional board selection for workspace flow checks. */
 function renderExecute(selected = true) {
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

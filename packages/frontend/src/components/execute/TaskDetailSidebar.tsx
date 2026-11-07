@@ -152,6 +152,7 @@ const activeRoleLabel = (selectedTask: string, activeTasks: ActiveTaskInfo[]): s
   return labels.filter(Boolean).join(", ") || null;
 };
 
+/** Compare task content, action callbacks, and layout inputs that affect the memoized inspector. */
 function areTaskDetailSidebarPropsEqual(
   prev: TaskDetailSidebarProps,
   next: TaskDetailSidebarProps
@@ -217,6 +218,7 @@ function areTaskDetailSidebarPropsEqual(
   return true;
 }
 
+/** Render task inspection and agent history while retaining native actions in either layout. */
 function TaskDetailSidebarInner({
   projectId,
   embeddedHeader = false,

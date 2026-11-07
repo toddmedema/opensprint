@@ -267,6 +267,7 @@ async function renderExecutePhase(store: ReturnType<typeof createFullPageStore>)
   return view;
 }
 
+/** Open legacy chat through the embedded disclosure or the standalone sidebar's Chat tab. */
 async function openExecuteChatTab(user: ReturnType<typeof userEvent.setup>) {
   const earlierChat = screen.queryByText("Earlier agent chat", { selector: "summary" });
   if (earlierChat) {

@@ -5,6 +5,7 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { GlobalKeyboardShortcuts } from "./GlobalKeyboardShortcuts";
 
+/** Exercise modal Escape ownership through the real focus and dismissal hook. */
 function DismissibleModal() {
   const [open, setOpen] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
@@ -18,6 +19,7 @@ function DismissibleModal() {
   ) : null;
 }
 
+/** Model a menu that consumes its first Escape before global navigation can act. */
 function DismissibleMenu() {
   const [open, setOpen] = useState(true);
   return (

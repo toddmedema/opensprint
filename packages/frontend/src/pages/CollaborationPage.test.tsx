@@ -73,12 +73,14 @@ function setup() {
     </QueryClientProvider>
   );
 }
+/** Join with a project credential and open Discussion after the session becomes available. */
 async function join(user: ReturnType<typeof userEvent.setup>, token = "alice-project-token") {
   await user.type(screen.getByLabelText("Project access token"), token);
   await user.click(screen.getByRole("button", { name: "Join session" }));
   await screen.findByRole("button", { name: "People in this workspace" });
   await user.click(screen.getByRole("tab", { name: "Discussion" }));
 }
+/** Switch the standalone workspace by task title and wait for focus to return from its sheet. */
 async function chooseTask(user: ReturnType<typeof userEvent.setup>, taskId = "os-task") {
   await user.click(screen.getByRole("button", { name: /^Choose task:/ }));
   await user.click(
@@ -97,6 +99,7 @@ async function inspect(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Guide agent…" }));
   await screen.findByRole("dialog", { name: "Guide agent" });
 }
+/** Leave through the workspace menu so tests exercise the same credential cleanup as users. */
 async function leave(user: ReturnType<typeof userEvent.setup>) {
   const options = screen.queryByRole("button", { name: "Workspace options" });
   if (options) await user.click(options);

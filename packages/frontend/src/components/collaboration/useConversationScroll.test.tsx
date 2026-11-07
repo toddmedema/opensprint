@@ -14,6 +14,7 @@ function rows(first: number, last: number): Row[] {
   }));
 }
 
+/** Render the real scroll hook with configurable rows, task scope, and tab visibility. */
 function Conversation({
   entries,
   scope = "task-a",
@@ -125,6 +126,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Position an older row at a known viewport offset before testing retention and history changes. */
 function readAt(id: number, clipped = 11) {
   const container = screen.getByTestId("conversation");
   const row = screen.getByText("Message " + id);

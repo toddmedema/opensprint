@@ -51,6 +51,7 @@ export interface TaskDetailHeaderProps {
   governanceCaseId?: string;
 }
 
+/** Present native task actions with a full title or a compact header inside the shared workspace. */
 export function TaskDetailHeader({
   title,
   embedded = false,

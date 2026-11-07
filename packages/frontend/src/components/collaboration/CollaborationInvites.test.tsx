@@ -11,6 +11,7 @@ afterEach(() => {
   for (const client of queryClients.splice(0)) client.clear();
   vi.restoreAllMocks();
 });
+/** Create invitation management fixtures for a host or an invited participant. */
 function fixture(actorId = "local-user") {
   const invite = {
     id: "invite-one",

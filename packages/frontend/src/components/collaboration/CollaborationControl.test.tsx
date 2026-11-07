@@ -13,6 +13,7 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
   vi.restoreAllMocks();
 });
+/** Build a controllable attempt fixture with explicit role, ownership, and backend support. */
 function sessionFor(
   options: {
     role?: "viewer" | "participant" | "controller";
@@ -45,11 +46,13 @@ function sessionFor(
     invalidate: vi.fn(async () => {}),
   } as unknown as CollaborationSessionState;
 }
+/** Render guidance with persistent draft identities and capture submissions and sheet state. */
 function mount(session: CollaborationSessionState, initialDrafts: Record<string, string> = {}) {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   clients.push(client);
   const submitted = vi.fn();
   const opened = vi.fn();
+  /** Retain editable guidance and submission identities while the tested attempt is replaced. */
   function Harness({ value, request = 0 }: { value: CollaborationSessionState; request?: number }) {
     const [drafts, setDrafts] = useState(initialDrafts);
     const [identities, setIdentities] = useState<
