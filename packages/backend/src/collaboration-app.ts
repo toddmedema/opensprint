@@ -216,6 +216,21 @@ export function createCollaborationSharingApp(
   app.use(`${API_PREFIX}/projects/:projectId/collaboration`, requireDatabase, router);
   // Never fall through to a host bootstrap, settings API, or arbitrary SPA route.
   app.use("/api", (_req, res) => res.status(404).end());
+  // A build can target a private host API. This credential-free marker tells only
+  // collaboration requests to use the public listener that served this document.
+  const bootstrapPath = "/__opensprint_collaboration_guest.js";
+  app.get(bootstrapPath, (_req, res) => {
+    res.type("application/javascript").send("window.__OPENSPRINT_COLLABORATION_GUEST__=true;");
+  });
+  const sendGuestIndexHtml = wrapAsync(async (_req, res) => {
+    const html = await fs.readFile(path.join(config.frontendDist, "index.html"), "utf8");
+    const bootstrap = `<script src="${bootstrapPath}"></script>`;
+    const head = /<head(?:\s[^>]*)?>/i;
+    const body = head.test(html)
+      ? html.replace(head, (opening) => `${opening}${bootstrap}`)
+      : `${bootstrap}${html}`;
+    res.type("html").send(body);
+  });
   app.use((req, res, next) => {
     // Static serving decodes paths and macOS/Windows can match case insensitively.
     // Deny the reserved bootstrap name using the same canonical interpretation.
@@ -233,16 +248,16 @@ export function createCollaborationSharingApp(
       res.status(404).end();
       return;
     }
+    // Static serving also accepts encoded and case-insensitive index paths.
+    // Decorate those before express.static can serve an unmarked document.
+    if ((req.method === "GET" || req.method === "HEAD") && normalized === "/index.html") {
+      sendGuestIndexHtml(req, res, next);
+      return;
+    }
     next();
   });
+  app.get("/collaborate/:projectId", sendGuestIndexHtml);
   app.use(express.static(config.frontendDist, { index: false, dotfiles: "deny" }));
-  app.get(
-    "/collaborate/:projectId",
-    wrapAsync(async (_req, res) => {
-      const html = await fs.readFile(path.join(config.frontendDist, "index.html"), "utf8");
-      res.type("html").send(html);
-    })
-  );
   app.use((_req, res) => res.status(404).end());
   app.use(guestErrorHandler);
   return app;

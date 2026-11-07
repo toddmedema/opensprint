@@ -4,6 +4,8 @@ declare global {
   interface Window {
     /** Injected inline into index.html by the desktop backend (CSP nonce; OPENSPRINT_DESKTOP). */
     __OPENSPRINT_LOCAL_SESSION__?: string;
+    /** Set by the dedicated guest listener; changes routing only and grants no authority. */
+    __OPENSPRINT_COLLABORATION_GUEST__?: boolean;
     electron?: {
       isElectron: true;
       platform?: string;

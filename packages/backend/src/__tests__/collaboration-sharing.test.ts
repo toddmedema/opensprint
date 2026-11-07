@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { runInNewContext } from "node:vm";
 import request from "supertest";
 import express from "express";
 import { initAppDb, type AppDb } from "../db/app-db.js";
@@ -67,6 +68,7 @@ describe("collaboration-only serving boundary", () => {
     expect(html.text).not.toContain(VITEST_DEFAULT_LOCAL_SESSION_TOKEN);
     expect(html.text).not.toContain("__OPENSPRINT_LOCAL_SESSION__");
     expect(html.headers["content-security-policy"]).toContain("script-src 'self'");
+    expect(html.headers["content-security-policy"]).not.toContain("'unsafe-inline'");
     expect(html.headers["referrer-policy"]).toBe("no-referrer");
     for (const route of [
       "/",
@@ -87,6 +89,42 @@ describe("collaboration-only serving boundary", () => {
     }
     const index = await request(app).get("/index.html").expect(200);
     expect(index.text).not.toContain(VITEST_DEFAULT_LOCAL_SESSION_TOKEN);
+  });
+
+  it("bootstraps same-origin guest routing before the app bundle on every index entry point", async () => {
+    for (const route of ["/collaborate/sample", "/index.html", "/INDEX.HTML", "/%69ndex.html"]) {
+      const response = await request(app).get(route).expect(200);
+      const marker = '<script src="/__opensprint_collaboration_guest.js"></script>';
+      expect(response.text).toContain(marker);
+      expect(response.text.indexOf(marker)).toBeLessThan(
+        response.text.indexOf('<script src="/assets/app.js">')
+      );
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.headers["content-security-policy"]).toContain("script-src 'self'");
+    }
+
+    const bootstrap = await request(app).get("/__opensprint_collaboration_guest.js").expect(200);
+    expect(bootstrap.headers["content-type"]).toContain("application/javascript");
+    const window = {};
+    runInNewContext(bootstrap.text, { window });
+    expect(window).toEqual({ __OPENSPRINT_COLLABORATION_GUEST__: true });
+    expect(bootstrap.headers["cache-control"]).toBe("no-store");
+    expect(bootstrap.text).not.toContain(VITEST_DEFAULT_LOCAL_SESSION_TOKEN);
+
+    await fs.writeFile(
+      path.join(directory, "frontend", "index.html"),
+      '<!doctype html><html><head lang="en"><script type="module" src="/assets/app.js"></script></head><body><main id="root"></main></body></html>'
+    );
+    const document = await request(app).get("/collaborate/sample").expect(200);
+    expect(document.text).toContain(
+      '<head lang="en"><script src="/__opensprint_collaboration_guest.js"></script><script type="module"'
+    );
+
+    await fs.mkdir(path.join(directory, "frontend", "assets"));
+    await fs.writeFile(path.join(directory, "frontend", "assets", "app.js"), "export default 1;");
+    const asset = await request(app).get("/assets/app.js").expect(200);
+    expect(asset.text).toBe("export default 1;");
+    expect(asset.headers["content-security-policy"]).toContain("script-src 'self'");
   });
 
   it("accepts configured public-origin writes while enforcing named roles and revocation", async () => {

@@ -28,14 +28,21 @@ export interface CollaborationGuidanceMessage {
 /**
  * Bind collaboration requests to one project and its in-memory invitation credential.
  * Omitting the credential uses the existing local session; it does not create guest authority.
+ * Guest-listener documents use their own API while other frontends keep the configured API base.
  */
 export function collaborationApi(projectId: string, token?: string) {
   const prefix = `/projects/${encodeURIComponent(projectId)}/collaboration`;
   const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const options = {
+    headers,
+    ...(typeof window !== "undefined" && window.__OPENSPRINT_COLLABORATION_GUEST__ === true
+      ? { apiBaseUrl: "/api/v1" }
+      : {}),
+  };
   const read = <T>(path: string, signal?: AbortSignal) =>
-    request<T>(`${prefix}${path}`, { headers, signal });
+    request<T>(`${prefix}${path}`, { ...options, signal });
   const write = <T>(path: string, body: unknown, method = "POST") =>
-    request<T>(`${prefix}${path}`, { headers, method, body: JSON.stringify(body) });
+    request<T>(`${prefix}${path}`, { ...options, method, body: JSON.stringify(body) });
   return {
     snapshot: (signal?: AbortSignal) => read<CollaborationSnapshot>("/snapshot", signal),
     replay: (after: number, signal?: AbortSignal) =>
@@ -52,7 +59,7 @@ export function collaborationApi(projectId: string, token?: string) {
       write<CollaborationPresence[]>("/presence", { clientId, taskId }),
     leave: (clientId: string) =>
       request<void>(`${prefix}/presence/${encodeURIComponent(clientId)}`, {
-        headers,
+        ...options,
         method: "DELETE",
         keepalive: true,
       }),
@@ -63,7 +70,10 @@ export function collaborationApi(projectId: string, token?: string) {
       expiresInHours: number;
     }) => write<CollaborationCreatedInvite>("/invites", input),
     revokeInvite: (id: string) =>
-      request<void>(`${prefix}/invites/${encodeURIComponent(id)}`, { headers, method: "DELETE" }),
+      request<void>(`${prefix}/invites/${encodeURIComponent(id)}`, {
+        ...options,
+        method: "DELETE",
+      }),
     preferences: (signal?: AbortSignal) => read<CollaborationPreferences>("/preferences", signal),
     savePreferences: (
       input: Pick<CollaborationPreferences, "seenCursor" | "subscribedTaskIds"> & {
