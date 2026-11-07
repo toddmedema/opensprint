@@ -809,7 +809,8 @@ export function CollaborationSession({
                           )}
                           {contextView === "diff" && contextData?.source === "active" && (
                             <p className="text-xs text-theme-muted">
-                              Live diffs show new files after they’re staged or committed.
+                              Supported new files appear after staging or committing. This filtered
+                              preview omits binary changes and paths containing spaces.
                             </p>
                           )}
                           <pre
