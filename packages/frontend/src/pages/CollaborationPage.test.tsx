@@ -1009,6 +1009,153 @@ describe("Execute collaboration", () => {
     expect(submissions("/preferences")[0]).not.toHaveProperty("markSeenAt");
   });
 
+  it("acknowledges observed unread events beyond the first history page without marking later events read", async () => {
+    enableObservedReading();
+    const fallback = handler;
+    const events = Array.from({ length: 601 }, (_, index) => discussionEvent(index + 1));
+    let seenCursor = 400;
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({
+          ...snapshot(),
+          cursor: 601,
+          messages: [events[400].payload, events[600].payload],
+          messagesHasMore: true,
+        });
+      if (url.includes("/events?")) {
+        const after = Number(new URL(url, location.origin).searchParams.get("after"));
+        const page = events.filter((event) => event.cursor > after).slice(0, 200);
+        return response({
+          events: page,
+          nextCursor: page.at(-1)?.cursor ?? after,
+          hasMore: after + page.length < events.length,
+        });
+      }
+      if (url.endsWith("/preferences")) {
+        if (init?.method === "PUT") seenCursor = JSON.parse(String(init.body)).seenCursor;
+        return response({ seenCursor, subscribedTaskIds: [], seenAt: null });
+      }
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await screen.findByText("Discussion 401");
+    await observeRows(401);
+    await waitFor(() => expect(submissions("/preferences")[0]).toEqual({ seenCursor: 401 }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/events?after=600"))).toBe(
+        true
+      )
+    );
+    expect(submissions("/preferences").some((value) => value.seenCursor > 401)).toBe(false);
+    expect(screen.getByRole("button", { name: "Earlier messages" })).toBeInTheDocument();
+  });
+
+  it("keeps the visibility observer attached while editing an unrelated discussion draft", async () => {
+    enableObservedReading();
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/snapshot")
+        ? response({ ...snapshot(), messages: [discussionEvent(1).payload], cursor: 1 })
+        : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await screen.findByText("Discussion 1");
+    await waitFor(() => expect(readingObservers.size).toBe(1));
+    const observer = [...readingObservers][0];
+    await user.type(screen.getByLabelText("Message team"), "Keep this unsent draft");
+    expect(readingObservers.has(observer)).toBe(true);
+    expect(observer.targets.size).toBe(1);
+  });
+
+  it("retains viewed control events and follows new replay pages after advancing the read cursor", async () => {
+    enableObservedReading();
+    const fallback = handler;
+    const control = {
+      ...discussionEvent(401),
+      type: "control_claimed",
+      payload: { runId: "run-1", controllerId: "bob", revision: 1 },
+    };
+    const events: unknown[] = [control];
+    let seenCursor = 400;
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({ ...snapshot(), cursor: 401, messagesHasMore: true });
+      if (url.includes("/events?after=0"))
+        return response({ events: [], nextCursor: 200, hasMore: true });
+      if (url.includes("/events?")) {
+        const after = Number(new URL(url, location.origin).searchParams.get("after"));
+        const page = events.filter((event) => (event as { cursor: number }).cursor > after);
+        return response({ events: page, nextCursor: 400 + events.length, hasMore: false });
+      }
+      if (url.endsWith("/preferences")) {
+        if (init?.method === "PUT") seenCursor = JSON.parse(String(init.body)).seenCursor;
+        return response({ seenCursor, subscribedTaskIds: [], seenAt: null });
+      }
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await screen.findByText("Bob claimed control");
+    await observeRows(401);
+    await waitFor(() => expect(submissions("/preferences")[0]).toEqual({ seenCursor: 401 }));
+    expect(screen.getByText("Bob claimed control")).toBeInTheDocument();
+    events.push(discussionEvent(402));
+    await act(async () => {
+      await client.invalidateQueries({ predicate: (query) => query.queryKey[3] === "snapshot" });
+    });
+    await screen.findByText("Discussion 402");
+    await observeRows(402);
+    await waitFor(() => expect(submissions("/preferences").at(-1)).toEqual({ seenCursor: 402 }));
+    expect(screen.getByText("Bob claimed control")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("/events?after=400"))
+    ).toHaveLength(1);
+  });
+
+  it("retries a failed unread replay explicitly without acknowledging unseen events or hot-looping", async () => {
+    enableObservedReading();
+    const fallback = handler;
+    const event = discussionEvent(401);
+    let seenCursor = 400;
+    let reads = 0;
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({
+          ...snapshot(),
+          cursor: 401,
+          messages: [event.payload],
+          messagesHasMore: true,
+        });
+      if (url.includes("/events?after=0"))
+        return response({ events: [], nextCursor: 200, hasMore: true });
+      if (url.includes("/events?after=400")) {
+        if (++reads === 1) throw new Error("Unread replay unavailable");
+        return response({ events: [event], nextCursor: 401, hasMore: false });
+      }
+      if (url.includes("/events?"))
+        return response({ events: [], nextCursor: 401, hasMore: false });
+      if (url.endsWith("/preferences")) {
+        if (init?.method === "PUT") seenCursor = JSON.parse(String(init.body)).seenCursor;
+        return response({ seenCursor, subscribedTaskIds: [], seenAt: null });
+      }
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await screen.findByText("Unread replay unavailable");
+    await observeRows(401);
+    expect(reads).toBe(1);
+    expect(submissions("/preferences")).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Retry connection" }));
+    await waitFor(() => expect(submissions("/preferences")[0]).toEqual({ seenCursor: 401 }));
+    expect(reads).toBe(2);
+  });
+
   it("does not acknowledge messages behind sheets, in a hidden document, or while unfocused", async () => {
     enableObservedReading();
     const fallback = handler;

@@ -119,7 +119,39 @@ export function useCollaborationSession(
     retry: false,
     gcTime: 0,
   });
-  const invalidate = () => qc.invalidateQueries({ queryKey });
+  const readStart = preferences.data?.seenCursor ?? 0;
+  const readThrough = snapshot.data?.cursor ?? 0;
+  const readEnabled =
+    enabled && Boolean(preferences.data) && visible.history !== false && readStart < readThrough;
+  // Read tracking has its own forward replay; browsing older history never moves its start.
+  const readReplay = useInfiniteQuery({
+    queryKey: [...queryKey, "readReplay"],
+    initialPageParam: readStart,
+    queryFn: async ({ pageParam, signal }) => ({
+      ...(await client.replay(pageParam, signal)),
+      requestedThrough: readThrough,
+    }),
+    getNextPageParam: (page, _pages, previousCursor) =>
+      page.nextCursor < readThrough &&
+      (page.nextCursor > previousCursor || page.requestedThrough < readThrough)
+        ? Math.max(page.nextCursor, readStart)
+        : undefined,
+    enabled: readEnabled,
+    staleTime: Infinity,
+    retry: false,
+    gcTime: 0,
+  });
+  const { hasNextPage, isFetching, error: readError, fetchNextPage } = readReplay;
+  useEffect(() => {
+    // A nonadvancing page stops this pass; only a later snapshot or explicit retry resumes it.
+    if (readEnabled && hasNextPage && !isFetching && !readError) void fetchNextPage();
+  }, [readEnabled, readThrough, hasNextPage, isFetching, readError, fetchNextPage]);
+  /** Refresh mutable connection state; committed read pages stay cached, with failed reads retryable. */
+  const invalidate = () =>
+    qc.invalidateQueries({
+      queryKey,
+      predicate: (query) => query.queryKey[3] !== "readReplay" || query.state.status === "error",
+    });
   const command = useMutation({
     gcTime: 0,
     mutationFn: (input: CollaborationCommand) => client.command(input),
@@ -215,6 +247,7 @@ export function useCollaborationSession(
     notifications.error ??
     preferences.error ??
     (visible.history !== false ? activity.error : null) ??
+    (visible.history !== false ? readReplay.error : null) ??
     presenceError;
   const error = connectionError ?? command.error ?? savePreferences.error;
   return {
@@ -231,6 +264,7 @@ export function useCollaborationSession(
     run,
     history,
     activity,
+    readReplay,
     command,
     savePreferences,
     error,

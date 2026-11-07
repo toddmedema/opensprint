@@ -126,6 +126,8 @@ export function CollaborationSession({
 
   const context = contexts[scope];
   const data = session.snapshot.data;
+  const threadMounted =
+    Boolean(data) && (!isCollaborationAccessError(session.snapshot.error) || Boolean(workContent));
   const principal = session.principal;
   const mayDiscuss = Boolean(principal && principal.role !== "viewer");
   const mayGuide = principal?.role === "controller";
@@ -146,6 +148,7 @@ export function CollaborationSession({
       ),
     [session.presence.data]
   );
+  /** Resolve current participant labels while retaining authors whose presence has expired. */
   const actorName = (actorId: string) =>
     actorId === principal?.actorId
       ? principal.displayName + " (you)"
@@ -155,6 +158,10 @@ export function CollaborationSession({
   const events = useMemo(
     () => session.activity.data?.pages.flatMap((page) => page.events) ?? [],
     [session.activity.data]
+  );
+  const readEvents = useMemo(
+    () => session.readReplay.data?.pages.flatMap((page) => page.events) ?? [],
+    [session.readReplay.data]
   );
   const recentMessages = useMemo(
     () =>
@@ -175,11 +182,16 @@ export function CollaborationSession({
     for (const message of recentMessages) all.set(message.id, message);
     return [...all.values()].sort((a, b) => a.cursor - b.cursor);
   }, [events, recentMessages, showEarlier, taskId]);
-  const controlEvents = events.filter(
+  const controlEvents = [
+    ...new Map(
+      [...(showEarlier || !session.activity.hasNextPage ? events : []), ...readEvents].map(
+        (event) => [event.cursor, event]
+      )
+    ).values(),
+  ].filter(
     (event) =>
       !("content" in event.payload) &&
-      (taskId ? event.payload.taskId === taskId : !event.payload.taskId) &&
-      (showEarlier || !session.activity.hasNextPage)
+      (taskId ? event.payload.taskId === taskId : !event.payload.taskId)
   );
   const instructionHistory = session.history.data ?? [];
   const visibleInstructions = showEarlier ? instructionHistory : instructionHistory.slice(-1);
@@ -298,6 +310,7 @@ export function CollaborationSession({
           person.displayName.toLowerCase().startsWith(completion.query.toLowerCase())
       );
 
+  /** Apply a field update to the shared draft owner without losing another task's drafts. */
   const setDraftField = <K extends keyof CollaborationDraftState>(
     key: K,
     value: SetStateAction<CollaborationDraftState[K]>
@@ -363,6 +376,7 @@ export function CollaborationSession({
       };
     });
   };
+  /** Bind an autocomplete choice to its actor and restore the caret after inserting its token. */
   const chooseMention = (actorId: string, displayName: string) => {
     if (!completion) return;
     const tokenText = "@" + displayName;
@@ -437,6 +451,7 @@ export function CollaborationSession({
     document.addEventListener("mousedown", outside);
     return () => document.removeEventListener("mousedown", outside);
   }, [optionsOpen, messageMenu]);
+  /** Consume menu Escape before workspace navigation and return focus to its trigger. */
   const dismissMenu = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Escape") return;
     event.preventDefault();
@@ -445,6 +460,7 @@ export function CollaborationSession({
     setMessageMenu(null);
     event.currentTarget.querySelector("button")?.focus();
   };
+  /** Close the popup when keyboard focus leaves both its trigger and actions. */
   const leaveMenu = (event: React.FocusEvent<HTMLDivElement>) => {
     if (!event.currentTarget.contains(event.relatedTarget)) {
       setOptionsOpen(false);
@@ -463,6 +479,7 @@ export function CollaborationSession({
       window.removeEventListener("blur", refresh);
     };
   }, []);
+  /** Permit read receipts only for the visible, focused thread outside occluding surfaces. */
   const threadReadable = useCallback(() => {
     const thread = threadRef.current;
     if (
@@ -510,7 +527,8 @@ export function CollaborationSession({
     return () => observer.disconnect();
   }, [
     view,
-    thread,
+    conversationContentKey,
+    threadMounted,
     sheet,
     guidanceOpen,
     optionsOpen,
@@ -523,12 +541,11 @@ export function CollaborationSession({
       !threadReadable() ||
       !session.preferences.data ||
       session.savePreferences.isPending ||
-      session.activity.isFetching ||
-      session.activity.error
+      session.readReplay.error
     )
       return;
     let cursor = session.preferences.data.seenCursor;
-    for (const event of events) {
+    for (const event of readEvents) {
       if (event.cursor <= cursor) continue;
       if (event.cursor !== cursor + 1 || !observed.current.has(event.cursor)) break;
       cursor = event.cursor;
@@ -565,10 +582,9 @@ export function CollaborationSession({
     optionsOpen,
     messageMenu,
     visibilityEpoch,
-    events,
+    readEvents,
     session.preferences.data,
-    session.activity.isFetching,
-    session.activity.error,
+    session.readReplay.error,
     session.savePreferences,
     threadReadable,
   ]);
@@ -579,6 +595,7 @@ export function CollaborationSession({
     setView("discussion");
     requestAnimationFrame(() => discussionRef.current?.focus());
   };
+  /** Prepare attributed guidance for explicit submission to the current attempt. */
   const promote = (message: CollaborationMessage) => {
     if (!taskId || !session.activeRun) return;
     const source = message.context;
@@ -611,6 +628,7 @@ export function CollaborationSession({
     setMessageMenu(null);
     setGuidanceRequest((value) => value + 1);
   };
+  /** Append an attributed decision to the existing draft without publishing it. */
   const prepareDecision = (message: CollaborationMessage) => {
     const existing = draftState.drafts[scope] ?? "";
     setDraftField("drafts", (previous) => ({
@@ -633,6 +651,7 @@ export function CollaborationSession({
     );
     setMessageMenu(null);
   };
+  /** Submit the captured task draft once, preserving newer edits and uncertain retry identities. */
   const sendMessage = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!text.trim() || session.command.isPending || !mayDiscuss) return;

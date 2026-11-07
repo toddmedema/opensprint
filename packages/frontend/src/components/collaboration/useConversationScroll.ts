@@ -7,6 +7,7 @@ interface ScrollAnchor {
   height: number;
 }
 
+/** Retain the first visible row and its viewport offset across inserts and retention cuts. */
 function captureAnchor(element: HTMLElement): ScrollAnchor {
   const viewport = element.getBoundingClientRect();
   const first = [...element.querySelectorAll<HTMLElement>("[data-conversation-entry]")].find(

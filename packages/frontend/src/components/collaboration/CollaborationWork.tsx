@@ -65,6 +65,7 @@ export function CollaborationWork({
     ...(context?.sourceAttempt ? { attempt: context.sourceAttempt } : {}),
     ...(context?.diffRevision ? { diffRevision: context.diffRevision } : {}),
   });
+  /** Translate a nonempty patch selection into comment metadata without reading project files. */
   const selectCode = () => {
     const selected = window.getSelection();
     if (
