@@ -50,15 +50,6 @@ function isFocusInModal(e: KeyboardEvent): boolean {
   return Boolean(dialog);
 }
 
-/**
- * Registers global keyboard shortcuts (web and Electron):
- * - 1/2/3/4/5: switch to Sketch/Plan/Execute/Evaluate/Deliver (when on a project)
- * - Ctrl+Tab / Ctrl+Shift+Tab: next/previous phase tab with wrap (when on a project; works even in editable fields)
- * - ~ (Backquote): go to home
- * - Escape: close modal if one is open; otherwise open settings (project if in a project, else global)
- * - ?: open help (project help if in a project, else global; same navigation as Settings)
- * - F1: open help on web builds
- */
 /** Parse projectId from pathname when under /projects/:projectId/... (GlobalKeyboardShortcuts is outside Routes so useParams is empty). */
 function projectIdFromPathname(pathname: string): string | undefined {
   const m = pathname.match(/^\/projects\/([^/]+)(?:\/|$)/);
@@ -75,6 +66,15 @@ function phaseIndexFromPathname(pathname: string): number {
   return idx >= 0 ? idx : 0;
 }
 
+/**
+ * Registers global keyboard shortcuts (web and Electron):
+ * - 1/2/3/4/5: switch to Sketch/Plan/Execute/Evaluate/Deliver (when on a project)
+ * - Ctrl+Tab / Ctrl+Shift+Tab: next/previous phase tab with wrap (when on a project; works even in editable fields)
+ * - ~ (Backquote): go to home
+ * - Escape: close modal if one is open; otherwise open settings (project if in a project, else global)
+ * - ?: open help (project help if in a project, else global; same navigation as Settings)
+ * - F1: open help on web builds
+ */
 export function GlobalKeyboardShortcuts() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -124,22 +124,6 @@ export function GlobalKeyboardShortcuts() {
         return;
       }
 
-      // Escape: close modal if one is open; otherwise open settings.
-      if (key === "Escape") {
-        if (isModalOpen() || isFocusInModal(e)) {
-          e.preventDefault();
-          return;
-        }
-        if (projectId) {
-          e.preventDefault();
-          navigate(`/projects/${projectId}/settings`);
-        } else {
-          e.preventDefault();
-          navigate("/settings");
-        }
-        return;
-      }
-
       // ?: open help everywhere; F1: web-only help shortcut.
       if (key === "?" || (!isElectron && key === "F1")) {
         e.preventDefault();
@@ -154,10 +138,31 @@ export function GlobalKeyboardShortcuts() {
     [isElectron, navigate, pathname, projectId]
   );
 
+  const handleEscape = useCallback(
+    (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        isEditableElement(event.target) ||
+        isModalOpen() ||
+        isFocusInModal(event)
+      )
+        return;
+      event.preventDefault();
+      navigate(projectId ? `/projects/${projectId}/settings` : "/settings");
+    },
+    [navigate, projectId]
+  );
+
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown, true);
-    return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [handleKeyDown]);
+    // Menus and other dismissible surfaces consume Escape before global navigation.
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [handleKeyDown, handleEscape]);
 
   // Electron app menu: Help and Settings trigger navigate via IPC; handle here so we have router context
   useEffect(() => {

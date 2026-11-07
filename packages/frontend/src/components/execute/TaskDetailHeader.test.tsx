@@ -41,6 +41,17 @@ function DeleteConfirmHarness() {
 }
 
 describe("TaskDetailHeader", () => {
+  it("keeps task actions available without repeating the shared workspace title and close", () => {
+    const onMarkDone = vi.fn();
+    render(<TaskDetailHeader {...baseProps} embedded onMarkDone={onMarkDone} />);
+
+    expect(screen.queryByTestId("task-detail-title")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close task detail" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+    fireEvent.click(screen.getByTestId("sidebar-mark-done-btn"));
+    expect(onMarkDone).toHaveBeenCalledOnce();
+  });
+
   it("directs governance holds to the docket and disables ordinary completion/retry", () => {
     render(
       <TaskDetailHeader

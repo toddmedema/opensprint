@@ -6,6 +6,8 @@ import { OpenInEditorButton } from "../OpenInEditorButton";
 
 export interface TaskDetailHeaderProps {
   title: string;
+  /** The shared task workspace supplies its own title and close action. */
+  embedded?: boolean;
   hasActions: boolean;
   isBlockedTask: boolean;
   isDoneTask: boolean;
@@ -49,8 +51,10 @@ export interface TaskDetailHeaderProps {
   governanceCaseId?: string;
 }
 
+/** Present native task actions with a full title or a compact header inside the shared workspace. */
 export function TaskDetailHeader({
   title,
+  embedded = false,
   hasActions,
   isBlockedTask,
   isDoneTask,
@@ -148,14 +152,16 @@ export function TaskDetailHeader({
   return (
     <>
       <div className="flex items-center gap-2 px-4 pt-4 pb-2 shrink-0 min-h-0 flex-nowrap">
-        <div className="min-w-0 flex-1">
-          <h3
-            className="font-semibold text-theme-text truncate block"
-            data-testid="task-detail-title"
-          >
-            {title}
-          </h3>
-        </div>
+        {!embedded && (
+          <div className="min-w-0 flex-1">
+            <h3
+              className="font-semibold text-theme-text truncate block"
+              data-testid="task-detail-title"
+            >
+              {title}
+            </h3>
+          </div>
+        )}
         {projectId && taskId && (
           <OpenInEditorButton
             projectId={projectId}
@@ -283,9 +289,11 @@ export function TaskDetailHeader({
             )}
           </div>
         )}
-        <div className="shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center">
-          <CloseButton onClick={onClose} ariaLabel="Close task detail" />
-        </div>
+        {!embedded && (
+          <div className="shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center">
+            <CloseButton onClick={onClose} ariaLabel="Close task detail" />
+          </div>
+        )}
       </div>
 
       {deleteConfirmOpen && (

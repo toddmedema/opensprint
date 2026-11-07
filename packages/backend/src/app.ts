@@ -32,7 +32,7 @@ import { createIntakeRouter } from "./routes/intake.js";
 import { createGovernanceRouter } from "./routes/governance.js";
 import { createGovernanceReplayRouter } from "./routes/governance-replay.js";
 import { createCommandsRouter } from "./routes/commands.js";
-import { createCollaborationRouter } from "./routes/collaboration.js";
+import { createProjectCollaborationRouter } from "./collaboration-app.js";
 import { createSpecPublicationRouter } from "./routes/spec-publication.js";
 import { integrationStore } from "./services/integration-store.service.js";
 import { tokenEncryption } from "./services/token-encryption.service.js";
@@ -50,9 +50,8 @@ import {
 } from "./services/local-session-auth.service.js";
 import { buildSpaContentSecurityPolicyProduction } from "@opensprint/shared";
 import { allowDesktopLocalSessionScriptRequest } from "./desktop-local-session-guard.js";
-import { agentChatService } from "./services/agent-chat.service.js";
-import { AppError } from "./middleware/error-handler.js";
 
+/** Compose the trusted installation API and desktop bootstrap; guest sharing uses a separate app. */
 export function createApp(services?: AppServices) {
   ensureLocalSessionToken();
   const app = express();
@@ -77,33 +76,10 @@ export function createApp(services?: AppServices) {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // The scoped pilot resolves its own authenticated actor. Its credentials grant
-  // no access to the existing local execution, settings or publication APIs.
   app.use(
     `${API_PREFIX}/projects/:projectId/collaboration`,
     requireDatabase,
-    createCollaborationRouter({
-      assertProjectExists: (projectId) => projectService.getProject(projectId),
-      getActiveRun: (projectId, taskId) => agentChatService.getActiveRun(projectId, taskId),
-      getGuidanceHistory: (projectId, taskId) =>
-        agentChatService.getHistory(projectId, taskId).slice(-200),
-      handleGuidance: async (input) => {
-        const active = agentChatService.getActiveRun(input.projectId, input.taskId);
-        if (!active || active.attemptId !== input.attemptId)
-          throw new AppError(
-            409,
-            "AGENT_ATTEMPT_CHANGED",
-            "The active attempt changed. Refresh before sending guidance."
-          );
-        return agentChatService.sendMessage(
-          input.projectId,
-          input.taskId,
-          input.content,
-          active.attempt,
-          { clientMessageId: input.clientMessageId, actorId: input.actorId }
-        );
-      },
-    })
+    createProjectCollaborationRouter(svc)
   );
 
   // Other API routes require the local installation's Bearer token.

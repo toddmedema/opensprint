@@ -192,6 +192,8 @@ const NO_REQUEST_TIMEOUT = { timeoutMs: null } as const;
 
 interface RequestOptions extends RequestInit {
   timeoutMs?: number | null;
+  /** Explicit API root for scoped clients served by a separate listener. */
+  apiBaseUrl?: string;
 }
 
 /** Abort when either the timeout elapses or the caller's signal aborts (whichever comes first). */
@@ -256,8 +258,12 @@ function governanceCapabilityHeader(capability?: string): RequestInit {
 
 /** Generic fetch wrapper with typed responses */
 export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const url = `${BASE_URL}${endpoint}`;
-  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
+  const {
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    apiBaseUrl = BASE_URL,
+    ...fetchOptions
+  } = options;
+  const url = `${apiBaseUrl}${endpoint}`;
   const signal = mergeRequestSignal(timeoutMs, fetchOptions.signal);
 
   const response = await fetch(url, {

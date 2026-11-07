@@ -1,7 +1,44 @@
+import { useRef, useState } from "react";
+import { useModalA11y } from "../hooks/useModalA11y";
 import { describe, it, expect } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { GlobalKeyboardShortcuts } from "./GlobalKeyboardShortcuts";
+
+/** Exercise modal Escape ownership through the real focus and dismissal hook. */
+function DismissibleModal() {
+  const [open, setOpen] = useState(true);
+  const ref = useRef<HTMLDivElement>(null);
+  useModalA11y({ containerRef: ref, isOpen: open, onClose: () => setOpen(false) });
+  return open ? (
+    <div ref={ref} role="dialog" aria-modal="true" aria-label="Dismissible modal">
+      <button type="button" onClick={() => setOpen(false)}>
+        Close modal
+      </button>
+    </div>
+  ) : null;
+}
+
+/** Model a menu that consumes its first Escape before global navigation can act. */
+function DismissibleMenu() {
+  const [open, setOpen] = useState(true);
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || !open) return;
+          event.preventDefault();
+          setOpen(false);
+        }}
+      >
+        Message actions
+      </button>
+      {open && <div role="menu">Message commands</div>}
+    </div>
+  );
+}
 
 function LocationDisplay() {
   const loc = useLocation();
@@ -346,6 +383,68 @@ describe("GlobalKeyboardShortcuts", () => {
     await waitFor(() => {}, { timeout: 100 });
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
     unmount();
+  });
+
+  it("lets a dialog owner dismiss Escape during bubbling without opening settings", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/execute"]}>
+        <GlobalKeyboardShortcuts />
+        <DismissibleModal />
+        <LocationDisplay />
+      </MemoryRouter>
+    );
+    const button = screen.getByRole("button", { name: "Close modal" });
+    button.focus();
+    await act(() =>
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Dismissible modal" })).not.toBeInTheDocument()
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/execute");
+  });
+
+  it("lets a nonmodal menu consume Escape before a later press opens settings", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/execute"]}>
+        <GlobalKeyboardShortcuts />
+        <DismissibleMenu />
+        <LocationDisplay />
+      </MemoryRouter>
+    );
+    const button = screen.getByRole("button", { name: "Message actions" });
+    button.focus();
+    const escape = () =>
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+      );
+
+    await act(escape);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/execute");
+
+    await act(escape);
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/settings");
+  });
+
+  it("keeps phase shortcuts active before a focused control stops propagation", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/execute"]}>
+        <GlobalKeyboardShortcuts />
+        <button type="button" onKeyDown={(event) => event.stopPropagation()}>
+          Task control
+        </button>
+        <LocationDisplay />
+      </MemoryRouter>
+    );
+    const button = screen.getByRole("button", { name: "Task control" });
+    button.focus();
+    await act(() =>
+      button.dispatchEvent(new KeyboardEvent("keydown", { key: "4", bubbles: true }))
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/eval");
   });
 
   it("? opens project help when on a project route (same context as help icon)", async () => {

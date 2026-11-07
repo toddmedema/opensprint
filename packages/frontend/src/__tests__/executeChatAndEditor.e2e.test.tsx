@@ -43,7 +43,8 @@ const mockChatSupport = vi.fn();
 const mockOpenEditor = vi.fn();
 const mockGetSettings = vi.fn();
 
-vi.mock("../api/client", () => ({
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
   api: {
     tasks: {
       list: (...args: unknown[]) => mockTasksList(...args),
@@ -85,6 +86,31 @@ vi.mock("../api/client", () => ({
       listByProject: vi.fn().mockResolvedValue([]),
     },
   },
+}));
+
+vi.mock("../api/collaboration", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/collaboration")>()),
+  collaborationApi: (projectId: string) => ({
+    snapshot: async () => ({
+      projectId,
+      sessionId: "default",
+      cursor: 0,
+      messages: [],
+      messagesHasMore: false,
+      runs: [],
+      runsHasMore: false,
+      principal: { actorId: "local-user", displayName: "Local user", role: "controller" },
+    }),
+    replay: async (after: number) => ({ events: [], nextCursor: after, hasMore: false }),
+    overview: async () => ({ projectName: "Test", tasks: [] }),
+    presence: async () => [],
+    preferences: async () => ({ seenCursor: 0, subscribedTaskIds: [] }),
+    notifications: async () => [],
+    activeRun: async () => null,
+    guidanceHistory: async () => [],
+    heartbeat: async () => [],
+    leave: async () => undefined,
+  }),
 }));
 
 /* ─── Fixtures ─── */
@@ -241,13 +267,18 @@ async function renderExecutePhase(store: ReturnType<typeof createFullPageStore>)
   return view;
 }
 
+/** Open legacy chat through the embedded disclosure or the standalone sidebar's Chat tab. */
 async function openExecuteChatTab(user: ReturnType<typeof userEvent.setup>) {
+  const earlierChat = screen.queryByText("Earlier agent chat", { selector: "summary" });
+  if (earlierChat) {
+    expect(screen.getByRole("tab", { name: "Work" })).toHaveAttribute("aria-selected", "true");
+    expect(earlierChat.closest("details")).not.toHaveAttribute("open");
+    await user.click(earlierChat);
+  } else {
+    await user.click(await screen.findByRole("tab", { name: "Chat" }));
+  }
   await waitFor(() => {
-    expect(screen.getByRole("tab", { name: "Chat" })).toBeInTheDocument();
-  });
-  await user.click(screen.getByRole("tab", { name: "Chat" }));
-  await waitFor(() => {
-    expect(screen.getByTestId("execute-agent-chat-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("execute-agent-chat-panel")).toBeVisible();
   });
 }
 
