@@ -200,7 +200,7 @@ export function createCollaborationRouter(options: {
       const input = z
         .object({
           seenCursor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-          subscribedTaskIds: z.array(projectIdSchema).max(200),
+          subscribedTaskIds: z.array(projectIdSchema).max(200).optional(),
           markSeen: z.boolean().optional(),
           markSeenAt: z.iso.datetime().optional(),
         })
@@ -212,7 +212,7 @@ export function createCollaborationRouter(options: {
           "INVALID_COLLABORATION_PREFERENCES",
           "Invalid notification preferences."
         );
-      for (const taskId of input.data.subscribedTaskIds)
+      for (const taskId of input.data.subscribedTaskIds ?? [])
         await options.assertTaskExists?.(projectId, taskId);
       res.json({ data: await service.updatePreferences(projectId, principal, input.data) });
     })

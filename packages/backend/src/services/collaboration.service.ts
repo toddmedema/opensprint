@@ -380,16 +380,20 @@ export class CollaborationService {
     });
   }
 
-  /** Advance read acknowledgments monotonically while preserving subscription-only edits. */
+  /** Advance reads monotonically; cursor-only writes retain subscriptions under the project lock. */
   async updatePreferences(
     projectId: string,
     principal: CollaborationPrincipal,
-    preferences: CollaborationPreferences & { markSeen?: boolean; markSeenAt?: string }
+    preferences: Pick<CollaborationPreferences, "seenCursor"> &
+      Partial<Pick<CollaborationPreferences, "subscribedTaskIds">> & {
+        markSeen?: boolean;
+        markSeenAt?: string;
+      }
   ): Promise<CollaborationPreferences> {
     const parsed = z
       .object({
         seenCursor: revision,
-        subscribedTaskIds: z.array(id).max(200),
+        subscribedTaskIds: z.array(id).max(200).optional(),
         markSeen: z.boolean().optional(),
         markSeenAt: z.iso.datetime().optional(),
       })
@@ -423,12 +427,15 @@ export class CollaborationService {
       if (parsed.data.seenCursor > Number(state?.cursor ?? 0))
         conflict("The seen cursor is ahead of this project.");
       const previous = await tx.queryOne(
-        "SELECT seen_cursor,seen_at FROM collaboration_preferences WHERE project_id = $1 AND actor_id = $2",
+        "SELECT seen_cursor,subscribed_task_ids,seen_at FROM collaboration_preferences WHERE project_id = $1 AND actor_id = $2",
         [projectId, principal.actorId]
       );
       const next = {
         seenCursor: Math.max(Number(previous?.seen_cursor ?? 0), parsed.data.seenCursor),
-        subscribedTaskIds: [...new Set(parsed.data.subscribedTaskIds)],
+        subscribedTaskIds:
+          parsed.data.subscribedTaskIds === undefined
+            ? (JSON.parse(String(previous?.subscribed_task_ids ?? "[]")) as string[])
+            : [...new Set(parsed.data.subscribedTaskIds)],
         seenAt: parsed.data.markSeen
           ? [
               previous?.seen_at == null ? "" : String(previous.seen_at),

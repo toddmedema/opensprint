@@ -1,4 +1,5 @@
 import type {
+  AgentChatMessage,
   CollaborationSnapshot,
   CollaborationReplay,
   CollaborationCommand,
@@ -16,14 +17,8 @@ import type {
 import { request } from "./client";
 
 export type SharedActiveRun = CollaborationActiveRun;
-export interface CollaborationGuidanceMessage {
-  id: string;
-  actorId?: string;
-  content: string;
-  status?: string;
-  attempt: number;
-  error?: string;
-}
+/** Guidance history uses the same durable message contract as agent chat. */
+export type CollaborationGuidanceMessage = AgentChatMessage;
 
 /**
  * Bind collaboration requests to one project and its in-memory invitation credential.
@@ -76,10 +71,11 @@ export function collaborationApi(projectId: string, token?: string) {
       }),
     preferences: (signal?: AbortSignal) => read<CollaborationPreferences>("/preferences", signal),
     savePreferences: (
-      input: Pick<CollaborationPreferences, "seenCursor" | "subscribedTaskIds"> & {
-        markSeen?: boolean;
-        markSeenAt?: string;
-      }
+      input: Pick<CollaborationPreferences, "seenCursor"> &
+        Partial<Pick<CollaborationPreferences, "subscribedTaskIds">> & {
+          markSeen?: boolean;
+          markSeenAt?: string;
+        }
     ) => write<CollaborationPreferences>("/preferences", input, "PUT"),
     notifications: (signal?: AbortSignal) =>
       read<CollaborationNotification[]>("/notifications", signal),

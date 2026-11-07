@@ -263,6 +263,88 @@ describe.each(["sqlite", "postgres"] as const)("polished collaboration (%s)", (d
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
+  it("preserves another tab's subscriptions during cursor-only HTTP acknowledgments and permits explicit clearing", async () => {
+    await service.command(project, alice, {
+      type: "append_message",
+      commandId: "read-boundary",
+      content: "An update that can be acknowledged",
+      taskId: "os-one",
+    });
+    const app = express();
+    app.use(express.json());
+    app.use(
+      "/projects/:projectId/collaboration",
+      createCollaborationRouter({
+        service,
+        assertProjectExists: async () => {},
+        assertTaskExists: async (_projectId, taskId) => {
+          if (taskId !== "os-one") throw new AppError(404, "TASK_NOT_FOUND", "Task not found.");
+        },
+      })
+    );
+    app.use(errorHandler);
+    const endpoint = `/projects/${project}/collaboration/preferences`;
+    const tabA = await request(app)
+      .get(endpoint)
+      .auth(VITEST_DEFAULT_LOCAL_SESSION_TOKEN, { type: "bearer" })
+      .expect(200);
+    expect(tabA.body.data.subscribedTaskIds).toEqual([]);
+
+    // Another tab opts in after the reader fetched its stale preference snapshot.
+    await request(app)
+      .put(endpoint)
+      .auth(VITEST_DEFAULT_LOCAL_SESSION_TOKEN, { type: "bearer" })
+      .send({ seenCursor: 0, subscribedTaskIds: ["os-one"] })
+      .expect(200);
+    const acknowledgment = await request(app)
+      .put(endpoint)
+      .auth(VITEST_DEFAULT_LOCAL_SESSION_TOKEN, { type: "bearer" })
+      .send({ seenCursor: 1 })
+      .expect(200);
+    expect(acknowledgment.body.data).toEqual({
+      seenCursor: 1,
+      subscribedTaskIds: ["os-one"],
+      seenAt: null,
+    });
+
+    const cleared = await request(app)
+      .put(endpoint)
+      .auth(VITEST_DEFAULT_LOCAL_SESSION_TOKEN, { type: "bearer" })
+      .send({ seenCursor: 0, subscribedTaskIds: [] })
+      .expect(200);
+    expect(cleared.body.data).toEqual({ seenCursor: 1, subscribedTaskIds: [], seenAt: null });
+    await request(app)
+      .put(endpoint)
+      .auth(VITEST_DEFAULT_LOCAL_SESSION_TOKEN, { type: "bearer" })
+      .send({ seenCursor: 1 })
+      .expect(200);
+    expect(await service.preferences(project, host)).toEqual(cleared.body.data);
+  });
+
+  it("initializes cursor-only preferences with empty subscriptions and rejects malformed optional updates", async () => {
+    const app = express();
+    app.use(express.json());
+    app.use(
+      "/projects/:projectId/collaboration",
+      createCollaborationRouter({ service, assertProjectExists: async () => {} })
+    );
+    app.use(errorHandler);
+    const endpoint = `/projects/${project}/collaboration/preferences`;
+    const initial = await request(app)
+      .put(endpoint)
+      .auth(VITEST_DEFAULT_LOCAL_SESSION_TOKEN, { type: "bearer" })
+      .send({ seenCursor: 0 })
+      .expect(200);
+    expect(initial.body.data).toEqual({ seenCursor: 0, subscribedTaskIds: [], seenAt: null });
+    const invalid = await request(app)
+      .put(endpoint)
+      .auth(VITEST_DEFAULT_LOCAL_SESSION_TOKEN, { type: "bearer" })
+      .send({ seenCursor: 0, subscribedTaskIds: null })
+      .expect(400);
+    expect(invalid.body.error.code).toBe("INVALID_COLLABORATION_PREFERENCES");
+    expect(await service.preferences(project, host)).toEqual(initial.body.data);
+  });
+
   it("tracks each browser independently, expires stale presence, and never transfers control on leave", async () => {
     await service.command(project, alice, {
       type: "claim_control",
