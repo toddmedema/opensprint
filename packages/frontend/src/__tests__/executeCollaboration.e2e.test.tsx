@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GlobalKeyboardShortcuts } from "../components/GlobalKeyboardShortcuts";
 import { MemoryRouter, useLocation } from "react-router-dom";
@@ -41,14 +41,14 @@ function CurrentRoute() {
   return <output aria-label="Current route">{useLocation().pathname}</output>;
 }
 
-function renderExecute() {
+function renderExecute(selected = true) {
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return renderWithProviders(
     <MemoryRouter initialEntries={["/projects/project-a/execute"]}>
       <GlobalKeyboardShortcuts />
-      <ExecutePhase projectId="project-a" selectedTaskId="os-task" />
+      <ExecutePhase projectId="project-a" />
       <CurrentRoute />
     </MemoryRouter>,
     {
@@ -57,7 +57,7 @@ function renderExecute() {
         execute: {
           ...initialExecuteState,
           ...toTasksByIdAndOrder([task] as never),
-          selectedTaskId: task.id,
+          selectedTaskId: selected ? task.id : null,
         },
       },
     }
@@ -155,20 +155,58 @@ afterEach(() => {
   delete window.__OPENSPRINT_LOCAL_SESSION__;
 });
 
-describe("Execute collaboration dock", () => {
-  it("dismisses the mobile dock with Escape from button focus while global shortcuts are installed", async () => {
+describe("Shared Execute task workspace", () => {
+  it("opens the selected task in Work by default with one title and its original task actions", async () => {
+    const user = userEvent.setup();
+    renderExecute();
+    expect(await screen.findByRole("tab", { name: "Work" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    await screen.findByText("Restore filter selection");
+    expect(screen.getAllByRole("heading", { name: task.title })).toHaveLength(1);
+    expect(screen.queryByLabelText("Selected task")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Activity" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Agent" })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("execute-filter-toolbar")).queryByRole("button", { name: "Share" })
+    ).not.toBeInTheDocument();
+    await screen.findByRole("button", { name: "Share" });
+    expect(screen.getAllByRole("button", { name: "Share" })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    expect(screen.getByTestId("sidebar-mark-done-btn")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-delete-task-btn")).toBeInTheDocument();
+  });
+
+  it("keeps native Work inspection available when collaboration cannot connect", async () => {
+    const fallback = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((input: string, init?: RequestInit) =>
+      String(input).endsWith("/collaboration/snapshot")
+        ? Promise.resolve(
+            new Response(
+              JSON.stringify({
+                error: { code: "UNAVAILABLE", message: "Collaboration unavailable" },
+              }),
+              { status: 503 }
+            )
+          )
+        : fallback(input, init)
+    );
+    renderExecute();
+    await screen.findByText("Restore filter selection");
+    expect(screen.getByRole("tab", { name: "Work" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Task actions" })).toBeEnabled();
+    expect(await screen.findByText("Collaboration unavailable")).toBeInTheDocument();
+  });
+
+  it("dismisses the mobile workspace with Escape without leaving Execute", async () => {
     const restoreViewport = mockViewport(390, 844);
     try {
       const user = userEvent.setup();
       renderExecute();
-      await user.click(
-        within(screen.getByTestId("execute-filter-toolbar")).getByRole("button", {
-          name: "Collaborate",
-        })
-      );
       const panel = await screen.findByRole("dialog", { name: "Sidebar panel" });
-      await within(panel).findByRole("heading", { name: "Collaborate" });
-      within(panel).getByRole("button", { name: "Close sidebar" }).focus();
+      await within(panel).findByRole("heading", { name: task.title });
+      within(panel).getByRole("button", { name: "Close task workspace" }).focus();
       await user.keyboard("{Escape}");
       await waitFor(() =>
         expect(screen.queryByRole("dialog", { name: "Sidebar panel" })).not.toBeInTheDocument()
@@ -181,20 +219,21 @@ describe("Execute collaboration dock", () => {
     }
   });
 
-  it("places the mobile dock below the Navbar and keeps its close action available", async () => {
+  it("places mobile content below the Navbar and exposes a single close button", async () => {
     const restoreViewport = mockViewport(390, 844);
     try {
       const user = userEvent.setup();
       renderExecute();
-      await user.click(
-        within(screen.getByTestId("execute-filter-toolbar")).getByRole("button", {
-          name: "Collaborate",
-        })
-      );
       const panel = await screen.findByRole("dialog", { name: "Sidebar panel" });
-      expect(panel).toHaveStyle({ top: `${NAVBAR_HEIGHT}px`, "--sidebar-overlay-z": "40" });
-      await within(panel).findByRole("heading", { name: "Collaborate" });
-      await user.click(within(panel).getByRole("button", { name: "Close sidebar" }));
+      expect(panel).toHaveStyle({ top: String(NAVBAR_HEIGHT) + "px", "--sidebar-overlay-z": "40" });
+      await within(panel).findByRole("heading", { name: task.title });
+      expect(
+        within(panel).queryByRole("button", { name: "Close sidebar", exact: true })
+      ).not.toBeInTheDocument();
+      expect(
+        within(panel).queryByRole("button", { name: "Close task detail" })
+      ).not.toBeInTheDocument();
+      await user.click(within(panel).getByRole("button", { name: "Close task workspace" }));
       await waitFor(() =>
         expect(screen.queryByRole("dialog", { name: "Sidebar panel" })).not.toBeInTheDocument()
       );
@@ -203,30 +242,23 @@ describe("Execute collaboration dock", () => {
     }
   });
 
-  it("retains discussion, source, mentions, decision and guidance drafts across closing and reopening", async () => {
+  it("retains separate team and agent drafts when the task workspace is closed and reopened", async () => {
     const user = userEvent.setup();
     renderExecute();
-    const toolbar = screen.getByTestId("execute-filter-toolbar");
-    await user.click(within(toolbar).getByRole("button", { name: "Collaborate" }));
-    await screen.findByRole("heading", { name: "Collaborate" });
-    expect(screen.getByLabelText("Selected task")).toHaveValue(task.id);
-    await user.click(screen.getByRole("tab", { name: "Changes" }));
-    await user.selectOptions(await screen.findByLabelText("Comment on a file"), "src/filters.ts");
-    await user.click(screen.getByRole("button", { name: "Discuss line" }));
+    await user.click(await screen.findByRole("tab", { name: "Discussion" }));
+    const message = await screen.findByLabelText("Message team");
+    await user.type(message, "@Maya keep this team draft");
+    await user.click(await screen.findByRole("button", { name: "Guide agent…" }));
+    const guidance = await screen.findByRole("dialog", { name: "Guide agent" });
     await user.type(
-      screen.getByLabelText("Discuss with participants"),
-      "Discuss this specific line"
+      within(guidance).getByLabelText("Guide the active agent"),
+      "Keep this instruction draft"
     );
-    await user.click(screen.getByLabelText("Record as a decision"));
-    await user.selectOptions(screen.getByLabelText("Mention"), "maya");
-    await user.click(screen.getByRole("tab", { name: "Agent" }));
-    await user.type(
-      await screen.findByLabelText("Guide the active agent"),
-      "Retain this agent draft"
-    );
-    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(guidance).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Close task workspace" }));
     await waitFor(() =>
-      expect(screen.queryByRole("heading", { name: "Collaborate" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("tab", { name: "Work" })).not.toBeInTheDocument()
     );
     await waitFor(() =>
       expect(
@@ -235,32 +267,61 @@ describe("Execute collaboration dock", () => {
         )
       ).toBe(true)
     );
-    await user.click(within(toolbar).getByRole("button", { name: "Collaborate" }));
-    await screen.findByLabelText("Discuss with participants");
-    expect(screen.getByLabelText("Discuss with participants")).toHaveValue(
-      "Discuss this specific line"
+
+    await user.click(screen.getByText(task.title));
+    expect(await screen.findByRole("tab", { name: "Work" })).toHaveAttribute(
+      "aria-selected",
+      "true"
     );
-    expect(screen.getByText(/Commenting on src\/filters.ts:1/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Record as a decision")).toBeChecked();
-    expect(screen.getByRole("button", { name: "Remove mention of Maya" })).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Agent" }));
+    await user.click(screen.getByRole("tab", { name: "Discussion" }));
+    expect(await screen.findByLabelText("Message team")).toHaveValue("@Maya keep this team draft");
+    await user.click(await screen.findByRole("button", { name: "Guide agent…" }));
     expect(await screen.findByLabelText("Guide the active agent")).toHaveValue(
-      "Retain this agent draft"
+      "Keep this instruction draft"
     );
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url, init]) => String(url).endsWith("/guidance") && init?.method === "POST"
+      )
+    ).toHaveLength(0);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url, init]) => String(url).endsWith("/commands") && init?.method === "POST"
+      )
+    ).toHaveLength(0);
   });
 
-  it("opens invitations again after the panel header dismissed them", async () => {
-    const user = userEvent.setup();
-    renderExecute();
-    const toolbar = screen.getByTestId("execute-filter-toolbar");
-    await user.click(within(toolbar).getByRole("button", { name: "Invite" }));
-    await screen.findByRole("heading", { name: "Invite to this project" });
-    const panel = screen.getByRole("region", { name: "Shared Execute session" });
-    await user.click(within(panel).getByRole("button", { name: "Invite" }));
-    expect(
-      screen.queryByRole("heading", { name: "Invite to this project" })
-    ).not.toBeInTheDocument();
-    await user.click(within(toolbar).getByRole("button", { name: "Invite" }));
-    await screen.findByRole("heading", { name: "Invite to this project" });
+  it.each([
+    [1280, 800],
+    [390, 844],
+  ])("restores keyboard focus after temporary Share closes at %i×%i", async (width, height) => {
+    const restoreViewport = mockViewport(width, height);
+    try {
+      const user = userEvent.setup();
+      renderExecute(false);
+      const toolbar = screen.getByTestId("execute-filter-toolbar");
+      const originalShare = within(toolbar).getByRole("button", { name: "Share" });
+      await user.click(originalShare);
+      const sharing = await screen.findByRole("dialog", { name: /Share/ });
+      expect(within(toolbar).queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(sharing).not.toBeInTheDocument());
+      const restoredShare = await within(toolbar).findByRole("button", { name: "Share" });
+      expect(restoredShare).not.toBe(originalShare);
+      await waitFor(() => expect(restoredShare).toHaveFocus());
+      // Modal cleanup restores on the next frame; the replacement trigger must keep focus.
+      await act(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          })
+      );
+      expect(restoredShare).toHaveFocus();
+      expect(screen.queryByRole("tab", { name: "Work" })).not.toBeInTheDocument();
+      await user.keyboard("{Enter}");
+      expect(await screen.findByRole("dialog", { name: /Share/ })).toBeInTheDocument();
+    } finally {
+      restoreViewport();
+    }
   });
 });

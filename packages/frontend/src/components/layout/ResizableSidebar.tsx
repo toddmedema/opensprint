@@ -37,10 +37,12 @@ export interface ResizableSidebarProps {
   visible?: boolean;
   /** When true, on mobile (< md) renders as fixed overlay with backdrop; on md+ uses inline layout */
   responsive?: boolean;
-  /** When true (default), on mobile uses fixed overlay with backdrop. When false, always inline flex (no overlay). Use false for Execute so main content stays scrollable. */
+  /** When true (default), on mobile uses fixed overlay with backdrop. When false, always inline flex (no overlay). Use false for panels that remain inline on mobile. */
   overlayOnMobile?: boolean;
   /** Optional top inset for mobile overlays beneath persistent app chrome. Defaults to full height. */
   mobileTopOffset?: number;
+  /** Disable the floating close button when content provides its own close action. */
+  showMobileCloseButton?: boolean;
   /** Called when user closes overlay (button, backdrop, swipe). Required when responsive=true for overlay close affordance. */
   onClose?: () => void;
   /** Accessible label for the resize handle (default "Resize sidebar") */
@@ -151,6 +153,7 @@ export function ResizableSidebar({
   responsive = false,
   overlayOnMobile = true,
   mobileTopOffset = 0,
+  showMobileCloseButton = true,
   onClose,
   resizeHandleLabel = "Resize sidebar",
   noBorder = false,
@@ -267,6 +270,7 @@ export function ResizableSidebar({
         {/* Semi-transparent backdrop */}
         <button
           type="button"
+          tabIndex={-1}
           onClick={onClose}
           className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           aria-label="Close sidebar (backdrop)"
@@ -288,7 +292,7 @@ export function ResizableSidebar({
           onTouchEnd={swipe.onTouchEnd}
         >
           {/* Close button — 44×44px touch target, floating top corner */}
-          {onClose && (
+          {onClose && showMobileCloseButton && (
             <div
               className={`absolute top-2 z-10 min-h-[44px] min-w-[44px] flex items-center justify-center ${
                 side === "right" ? "right-2" : "left-2"

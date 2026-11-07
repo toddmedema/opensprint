@@ -99,6 +99,24 @@ function mount(session: CollaborationSessionState, initialDrafts: Record<string,
 }
 
 describe("focused agent guidance", () => {
+  it("omits the idle guidance row when there is no active run or recoverable draft", () => {
+    const session = { ...sessionFor(), activeRun: null, run: undefined };
+    mount(session);
+    expect(screen.queryByRole("region", { name: "Agent guidance" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Guide agent…" })).not.toBeInTheDocument();
+  });
+
+  it("keeps an ended attempt's unsent draft recoverable without allowing a send", async () => {
+    const session = { ...sessionFor(), activeRun: null, run: undefined };
+    const user = userEvent.setup();
+    mount(session, { "attempt-one": "Retain the old instruction draft" });
+    await user.click(screen.getByRole("button", { name: "Guide agent…" }));
+    await user.click(screen.getByText("Earlier drafts"));
+    expect(screen.getByText("Retain the old instruction draft")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Send to agent" })).not.toBeInTheDocument();
+    expect(session.client.guidance).not.toHaveBeenCalled();
+  });
+
   it("keeps ownership and instructions compact until the user explicitly opens and sends", async () => {
     const session = sessionFor();
     const user = userEvent.setup();
@@ -167,6 +185,44 @@ describe("focused agent guidance", () => {
         expectedRevision: 7,
       })
     );
+    expect(session.client.guidance).not.toHaveBeenCalled();
+  });
+
+  it("dismisses ownership actions with Escape before the workspace handles it", async () => {
+    const user = userEvent.setup();
+    mount(sessionFor());
+    const summary = screen.getByLabelText("Agent control options");
+    const menu = summary.closest("details")!;
+    await user.click(summary);
+    expect(menu).toHaveAttribute("open");
+    const outerEscape = vi.fn();
+    document.addEventListener("keydown", outerEscape);
+    try {
+      await user.keyboard("{Escape}");
+      expect(menu).not.toHaveAttribute("open");
+      expect(summary).toHaveFocus();
+      expect(outerEscape).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("keydown", outerEscape);
+    }
+  });
+
+  it("dismisses ownership actions on selection and outside focus without sending guidance", async () => {
+    const session = sessionFor();
+    const user = userEvent.setup();
+    const result = mount(session);
+    const summary = screen.getByLabelText("Agent control options");
+    const menu = summary.closest("details")!;
+    await user.click(summary);
+    await waitFor(() => expect(result.opened).toHaveBeenLastCalledWith(true));
+    await user.click(screen.getByRole("button", { name: "Offer control to Bob" }));
+    expect(menu).not.toHaveAttribute("open");
+    expect(session.command.mutate).toHaveBeenCalledTimes(1);
+    await user.click(summary);
+    const guide = screen.getByRole("button", { name: "Guide agent…" });
+    guide.focus();
+    expect(guide).toHaveFocus();
+    expect(menu).not.toHaveAttribute("open");
     expect(session.client.guidance).not.toHaveBeenCalled();
   });
 

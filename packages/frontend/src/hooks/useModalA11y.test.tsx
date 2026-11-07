@@ -51,7 +51,79 @@ function TestModalWithInitialFocus({ onClose }: { onClose: () => void }) {
   );
 }
 
+function ModalWithPointerOnlyControl() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useModalA11y({ containerRef, onClose: vi.fn() });
+  return (
+    <div role="dialog" ref={containerRef} aria-label="Pointer-only control test">
+      <button type="button" tabIndex={-1}>
+        Backdrop
+      </button>
+      <button type="button">First control</button>
+      <button type="button">Last control</button>
+    </div>
+  );
+}
+
+function ModalWithDisclosures() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useModalA11y({ containerRef, onClose: vi.fn() });
+  return (
+    <div role="dialog" ref={containerRef} aria-label="Disclosure controls">
+      <button type="button">Close disclosures</button>
+      <details open>
+        <summary>Access options</summary>
+        <input aria-label="Expiry" />
+      </details>
+      <details>
+        <summary>Manage access</summary>
+      </details>
+    </div>
+  );
+}
+
 describe("useModalA11y", () => {
+  it("keeps native disclosures in forward and reverse modal keyboard navigation", () => {
+    render(<ModalWithDisclosures />);
+    const close = screen.getByRole("button", { name: "Close disclosures" });
+    const options = screen.getByText("Access options");
+    const manage = screen.getByText("Manage access");
+    options.focus();
+    const forward = new KeyboardEvent("keydown", {
+      key: "Tab",
+      bubbles: true,
+      cancelable: true,
+    });
+    options.dispatchEvent(forward);
+    expect(forward.defaultPrevented).toBe(false);
+    expect(options).toHaveFocus();
+    const backward = new KeyboardEvent("keydown", {
+      key: "Tab",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    options.dispatchEvent(backward);
+    expect(backward.defaultPrevented).toBe(false);
+    manage.focus();
+    fireEvent.keyDown(manage, { key: "Tab", cancelable: true });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true, cancelable: true });
+    expect(manage).toHaveFocus();
+  });
+
+  it("excludes negative-tabindex controls from initial focus and both trap boundaries", () => {
+    render(<ModalWithPointerOnlyControl />);
+    const first = screen.getByRole("button", { name: "First control" });
+    const last = screen.getByRole("button", { name: "Last control" });
+    expect(first).toHaveFocus();
+    last.focus();
+    fireEvent.keyDown(last, { key: "Tab", cancelable: true });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true, cancelable: true });
+    expect(last).toHaveFocus();
+  });
+
   it("calls onClose when Escape is pressed", async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
@@ -146,6 +218,54 @@ function NestedDialogs({
 }
 
 describe("modal focus ownership", () => {
+  it("preserves new focus chosen before a queued child-dialog restore runs", async () => {
+    const frames: FrameRequestCallback[] = [];
+    const frame = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const user = userEvent.setup();
+    try {
+      render(<NestedDialogs parentClose={vi.fn()} childClose={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: "Open parent" }));
+      await user.click(screen.getByRole("button", { name: "Open child" }));
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Child first" }), {
+        key: "Escape",
+      });
+      expect(screen.queryByRole("dialog", { name: "Child" })).not.toBeInTheDocument();
+      const next = screen.getByRole("button", { name: "Parent last" });
+      next.focus();
+      frames.splice(0).forEach((callback) => callback(0));
+      expect(next).toHaveFocus();
+    } finally {
+      frame.mockRestore();
+    }
+  });
+
+  it("preserves new focus outside a closed parent before its queued restore runs", async () => {
+    const frames: FrameRequestCallback[] = [];
+    const frame = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const user = userEvent.setup();
+    const next = document.createElement("button");
+    next.textContent = "New workspace action";
+    document.body.append(next);
+    try {
+      render(<NestedDialogs parentClose={vi.fn()} childClose={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: "Open parent" }));
+      fireEvent.keyDown(screen.getByRole("button", { name: "Parent last" }), { key: "Escape" });
+      expect(screen.queryByRole("dialog", { name: "Parent" })).not.toBeInTheDocument();
+      next.focus();
+      frames.splice(0).forEach((callback) => callback(0));
+      expect(next).toHaveFocus();
+    } finally {
+      frame.mockRestore();
+      next.remove();
+    }
+  });
+
   it("keeps focus through callback rerenders and calls the latest close callback", async () => {
     const firstClose = vi.fn();
     const latestClose = vi.fn();

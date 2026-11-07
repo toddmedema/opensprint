@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import type { CollaborationSnapshot } from "@opensprint/shared";
 import { CollaborationPage } from "./CollaborationPage";
+import { CollaborationSession } from "../components/collaboration/CollaborationSession";
 
 const response = (data: unknown) =>
   new Response(JSON.stringify({ data }), {
@@ -75,20 +76,165 @@ function setup() {
 async function join(user: ReturnType<typeof userEvent.setup>, token = "alice-project-token") {
   await user.type(screen.getByLabelText("Project access token"), token);
   await user.click(screen.getByRole("button", { name: "Join session" }));
-  await screen.findByRole("heading", { name: "Collaborate" });
-  await screen.findByText(/Live · Alice/);
+  await screen.findByRole("button", { name: "People in this workspace" });
+  await user.click(screen.getByRole("tab", { name: "Discussion" }));
+}
+async function chooseTask(user: ReturnType<typeof userEvent.setup>, taskId = "os-task") {
+  await user.click(screen.getByRole("button", { name: /^Choose task:/ }));
+  await user.click(
+    await screen.findByRole("button", {
+      name: tasks.find((task) => task.id === taskId)!.title,
+      exact: true,
+    })
+  );
+  await screen.findByRole("heading", {
+    name: new RegExp(tasks.find((task) => task.id === taskId)!.title),
+  });
+  await waitFor(() => expect(screen.getByRole("button", { name: /^Choose task:/ })).toHaveFocus());
 }
 async function inspect(user: ReturnType<typeof userEvent.setup>) {
-  await waitFor(() =>
-    expect(screen.getByRole("option", { name: tasks[0].title })).toBeInTheDocument()
-  );
-  await user.selectOptions(screen.getByLabelText("Selected task"), "os-task");
-  await user.click(screen.getByRole("tab", { name: "Agent" }));
+  await chooseTask(user);
+  await user.click(screen.getByRole("button", { name: "Guide agent…" }));
+  await screen.findByRole("dialog", { name: "Guide agent" });
 }
+async function leave(user: ReturnType<typeof userEvent.setup>) {
+  const options = screen.queryByRole("button", { name: "Workspace options" });
+  if (options) await user.click(options);
+  const action = screen.getByRole("button", { name: "Leave session" });
+  await user.click(action);
+}
+async function chooseMaya(user: ReturnType<typeof userEvent.setup>, taskTitle: string) {
+  await user.type(screen.getByLabelText("Message team"), "@Ma");
+  await user.click(screen.getByRole("button", { name: new RegExp("@Maya.*" + taskTitle) }));
+}
+function mayaParticipants() {
+  return [
+    people[0],
+    {
+      ...people[1],
+      actorId: "maya-a",
+      clientId: "maya-a-browser",
+      displayName: "Maya",
+      taskId: "os-task",
+    },
+    {
+      ...people[1],
+      actorId: "maya-b",
+      clientId: "maya-b-browser",
+      displayName: "Maya",
+      taskId: "os-other",
+    },
+  ];
+}
+
 const submissions = (ending: string) =>
   fetchMock.mock.calls
     .filter(([url, init]) => String(url).endsWith(ending) && init?.body)
     .map(([, init]) => JSON.parse(init.body));
+
+const readingObservers = new Set<{
+  callback: IntersectionObserverCallback;
+  targets: Set<Element>;
+}>();
+function enableObservedReading() {
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      callback: IntersectionObserverCallback;
+      targets = new Set<Element>();
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+        readingObservers.add(this);
+      }
+      observe(target: Element) {
+        this.targets.add(target);
+      }
+      unobserve(target: Element) {
+        this.targets.delete(target);
+      }
+      disconnect() {
+        readingObservers.delete(this);
+      }
+    }
+  );
+}
+async function observeRows(...cursors: number[]) {
+  await act(async () => {
+    for (const observer of [...readingObservers]) {
+      const entries = [...observer.targets]
+        .filter((target) => cursors.includes(Number((target as HTMLElement).dataset.eventCursor)))
+        .map((target) => ({ target, isIntersecting: true }) as IntersectionObserverEntry);
+      if (entries.length) observer.callback(entries, observer as unknown as IntersectionObserver);
+    }
+  });
+}
+function discussionEvent(cursor: number, taskId?: string) {
+  return {
+    projectId: "project-a",
+    cursor,
+    actorId: "bob",
+    createdAt: "2026-11-06T10:00:00Z",
+    type: "message_appended",
+    payload: {
+      id: "message-" + cursor,
+      actorId: "bob",
+      displayName: "Bob",
+      content: "Discussion " + cursor,
+      cursor,
+      taskId,
+      createdAt: "2026-11-06T10:00:00Z",
+    },
+  };
+}
+
+/** Deterministic layout for chat interaction tests; positions follow rendered row order. */
+function mockConversationGeometry() {
+  const nativeHeight = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight")?.get;
+  const nativeClientHeight = Object.getOwnPropertyDescriptor(
+    Element.prototype,
+    "clientHeight"
+  )?.get;
+  const nativeRect = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (
+    this: HTMLElement
+  ) {
+    return this.dataset.testid === "team-discussion-scroll"
+      ? this.querySelectorAll("[data-conversation-entry]").length * 100
+      : (nativeHeight?.call(this) ?? 0);
+  });
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (
+    this: HTMLElement
+  ) {
+    return this.dataset.testid === "team-discussion-scroll"
+      ? this.closest("[hidden]")
+        ? 0
+        : 200
+      : (nativeClientHeight?.call(this) ?? 0);
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement
+  ) {
+    const container = this.closest<HTMLElement>('[data-testid="team-discussion-scroll"]');
+    if (!container || (!this.dataset.conversationEntry && this !== container))
+      return nativeRect.call(this);
+    const index = [...container.querySelectorAll("[data-conversation-entry]")].indexOf(this);
+    const top = this === container ? 0 : index * 100 - container.scrollTop;
+    const height = this === container ? 200 : 100;
+    return {
+      top,
+      bottom: top + height,
+      left: 0,
+      right: 400,
+      width: 400,
+      height,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    } as DOMRect;
+  });
+}
 
 beforeEach(() => {
   // jsdom lacks AbortSignal.any. Fetch is mocked here; preserve the query cancellation signal.
@@ -98,6 +244,11 @@ beforeEach(() => {
   });
   delete window.__OPENSPRINT_LOCAL_SESSION__;
   window.history.replaceState(null, "", "/");
+  const storedPreferences = {
+    seenCursor: 0,
+    subscribedTaskIds: [] as string[],
+    seenAt: null as string | null,
+  };
   handler = async (url, init) => {
     if (url.endsWith("/snapshot"))
       return response(snapshot(url.includes("project-b") ? "project-b" : "project-a"));
@@ -118,12 +269,20 @@ beforeEach(() => {
     if (url.includes("/runs/")) return response(activeRun);
     if (url.endsWith("/presence")) return response(people);
     if (url.includes("/presence/")) return new Response(null, { status: 204 });
-    if (url.endsWith("/preferences"))
-      return response(
-        init?.method === "PUT"
-          ? JSON.parse(String(init.body))
-          : { seenCursor: 0, subscribedTaskIds: [], seenAt: null }
-      );
+    if (url.endsWith("/preferences")) {
+      if (init?.method === "PUT") {
+        const update = JSON.parse(String(init.body));
+        storedPreferences.seenCursor = Math.max(
+          storedPreferences.seenCursor,
+          update.seenCursor ?? 0
+        );
+        if (Array.isArray(update.subscribedTaskIds))
+          storedPreferences.subscribedTaskIds = update.subscribedTaskIds;
+        if (update.markSeen)
+          storedPreferences.seenAt = update.markSeenAt ?? new Date().toISOString();
+      }
+      return response(storedPreferences);
+    }
     if (url.endsWith("/notifications")) return response([]);
     if (url.includes("/guidance/")) return response([]);
     if (url.endsWith("/guidance")) return response({ delivered: true, status: "queued" });
@@ -138,6 +297,8 @@ afterEach(() => {
   cleanup();
   client?.clear();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  readingObservers.clear();
   delete window.__OPENSPRINT_LOCAL_SESSION__;
   window.history.replaceState(null, "", "/");
 });
@@ -154,9 +315,9 @@ describe("Execute collaboration", () => {
           })
         : fallback(url, init);
     setup();
-    await screen.findByRole("heading", { name: "Collaborate" });
+    await screen.findByRole("button", { name: "People in this workspace" });
     expect(screen.queryByLabelText("Project access token")).not.toBeInTheDocument();
-    await screen.findByRole("button", { name: "Invite" });
+    await screen.findByRole("button", { name: "Share" });
     expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get("Authorization")).toBe(
       "Bearer local-secret"
     );
@@ -187,12 +348,12 @@ describe("Execute collaboration", () => {
     window.history.replaceState(null, "", "/collaborate/project-a#invite=private-invite-token");
     const user = userEvent.setup();
     setup();
-    await screen.findByRole("heading", { name: "Collaborate" });
+    await screen.findByRole("button", { name: "People in this workspace" });
     expect(window.location.hash).toBe("");
     expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get("Authorization")).toBe(
       "Bearer private-invite-token"
     );
-    await user.click(screen.getByRole("button", { name: "Leave session" }));
+    await leave(user);
     await screen.findByRole("heading", { name: "Join collaboration" });
     expect(screen.getByLabelText("Project access token")).toHaveValue("");
     await waitFor(() => expect(client.getQueryCache().getAll()).toHaveLength(0));
@@ -208,12 +369,12 @@ describe("Execute collaboration", () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    const field = screen.getByLabelText("Discuss with participants");
+    const field = screen.getByLabelText("Message team");
     await user.type(field, "Keep my draft");
-    await user.click(screen.getByRole("button", { name: "Send message" }));
+    await user.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByText("Network response lost");
     expect(field).toHaveValue("Keep my draft");
-    await user.click(screen.getByRole("button", { name: "Send message" }));
+    await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(field).toHaveValue(""));
     expect(submissions("/commands")).toHaveLength(2);
     expect(submissions("/commands")[1]).toEqual(submissions("/commands")[0]);
@@ -223,9 +384,9 @@ describe("Execute collaboration", () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    await inspect(user);
-    await user.selectOptions(await screen.findByLabelText("Next controller"), "bob");
-    await user.click(screen.getByRole("button", { name: "Offer control" }));
+    await chooseTask(user);
+    await user.click(screen.getByLabelText("Agent control options"));
+    await user.click(screen.getByRole("button", { name: "Offer control to Bob" }));
     expect(submissions("/commands")[0]).toMatchObject({
       type: "request_control",
       taskId: "os-task",
@@ -252,7 +413,7 @@ describe("Execute collaboration", () => {
     expect(commands[1].clientMessageId).not.toBe(commands[0].clientMessageId);
   });
 
-  it("shows persisted guidance dispositions after the active attempt ends", async () => {
+  it("keeps ended-attempt instruction receipts in the shared conversation and reveals older instructions on demand", async () => {
     const fallback = handler;
     handler = async (url, init) => {
       if (url.includes("/runs/")) return response(null);
@@ -273,6 +434,8 @@ describe("Execute collaboration", () => {
             attempt: 1,
             content: "Earlier guidance",
             status: "included",
+            timestamp: "2026-11-06T09:00:00Z",
+            role: "user",
           },
           {
             id: "ended",
@@ -280,7 +443,8 @@ describe("Execute collaboration", () => {
             attempt: 2,
             content: "Pending guidance",
             status: "run-ended",
-            error: "Run ended before inclusion.",
+            timestamp: "2026-11-06T10:00:00Z",
+            role: "user",
           },
         ]);
       return fallback(url, init);
@@ -288,12 +452,14 @@ describe("Execute collaboration", () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    await inspect(user);
-    await screen.findByText(/No active run for this task/);
-    const history = await screen.findByRole("list", { name: "Agent guidance history" });
-    expect(within(history).getByText(/Attempt 1 · Included in agent turn/)).toBeInTheDocument();
-    expect(within(history).getByText(/Attempt 2 · Run ended before inclusion/)).toBeInTheDocument();
-    expect(within(history).getByText("Run ended before inclusion.")).toBeInTheDocument();
+    await chooseTask(user);
+    await screen.findByText("Run ended before inclusion");
+    expect(screen.queryByRole("button", { name: "Guide agent…" })).not.toBeInTheDocument();
+    expect(screen.getByText("Pending guidance")).toBeInTheDocument();
+    expect(screen.queryByText("Earlier guidance")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Earlier messages" }));
+    await screen.findByText("Earlier guidance");
+    expect(screen.getByText("Included in agent turn")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Send to agent" })).not.toBeInTheDocument();
   });
 
@@ -348,9 +514,9 @@ describe("Execute collaboration", () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    await inspect(user);
+    await chooseTask(user);
     await screen.findByText(/Alice \(you\) is guiding/);
-    expect(screen.queryByLabelText("Discuss with participants")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Message team")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Guide the active agent")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Release control" })).not.toBeInTheDocument();
   });
@@ -391,25 +557,23 @@ describe("Execute collaboration", () => {
     expect(screen.getByLabelText("Project access token")).toHaveValue("");
   });
 
-  it("preserves task-specific discussion drafts and follows a named teammate’s selected task", async () => {
+  it("preserves task-specific discussion drafts without participant-following mode or a persistent task selector", async () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    await user.selectOptions(await screen.findByLabelText("Selected task"), "os-task");
-    await user.type(screen.getByLabelText("Discuss with participants"), "Task A draft");
-    await user.selectOptions(screen.getByLabelText("Selected task"), "os-other");
-    expect(screen.getByLabelText("Discuss with participants")).toHaveValue("");
-    await user.selectOptions(screen.getByLabelText("Selected task"), "os-task");
-    expect(screen.getByLabelText("Discuss with participants")).toHaveValue("Task A draft");
-    await user.click(screen.getByText(/people here/));
-    await user.click(screen.getByRole("button", { name: "Follow Bob" }));
-    expect(screen.getByLabelText("Selected task")).toHaveValue("os-other");
-    await screen.findByText(/Following Bob’s selected task/);
-    await user.click(screen.getByRole("button", { name: "Stop following" }));
-    expect(screen.getByLabelText("Selected task")).toHaveValue("os-other");
+    await chooseTask(user);
+    await user.type(screen.getByLabelText("Message team"), "Task A draft");
+    await chooseTask(user, "os-other");
+    expect(screen.getByLabelText("Message team")).toHaveValue("");
+    await chooseTask(user);
+    expect(screen.getByLabelText("Message team")).toHaveValue("Task A draft");
+    expect(screen.queryByLabelText("Selected task")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "People in this workspace" }));
+    expect(screen.queryByRole("button", { name: /Follow/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Bob")).toBeInTheDocument();
   });
 
-  it("attaches file/attempt provenance, mentions and decisions and prepares an attributed guidance draft", async () => {
+  it("prepares attributed instructions from a message action without automatically sending to the agent", async () => {
     const fallback = handler;
     handler = async (url, init) =>
       url.endsWith("/snapshot")
@@ -431,7 +595,7 @@ describe("Execute collaboration", () => {
                   diffRevision: "old-revision",
                 },
                 createdAt: "2026-11-06T10:00:00Z",
-                cursor: 0,
+                cursor: 1,
               },
             ],
           })
@@ -439,125 +603,61 @@ describe("Execute collaboration", () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    await inspect(user);
-    await user.click(screen.getByRole("tab", { name: "Changes" }));
-    await user.selectOptions(screen.getByLabelText("Comment on a file"), "src/filters.ts");
-    await user.clear(screen.getByLabelText("Line"));
-    await user.type(screen.getByLabelText("Line"), "12");
-    await user.click(screen.getByRole("button", { name: "Discuss line" }));
-    await user.type(screen.getByLabelText("Discuss with participants"), "Agreed");
-    await user.click(screen.getByLabelText("Record as a decision"));
-    await user.selectOptions(screen.getByLabelText("Mention"), "bob");
-    await user.click(screen.getByRole("button", { name: "Send message" }));
+    await chooseTask(user);
+    await user.click(screen.getByRole("button", { name: "Message actions for Bob" }));
+    await user.click(await screen.findByRole("button", { name: "Send to agent…" }));
+    const field = await screen.findByLabelText("Guide the active agent");
+    expect((field as HTMLTextAreaElement).value).toContain("From Bob");
+    expect((field as HTMLTextAreaElement).value).toContain("attempt 1");
+    expect((field as HTMLTextAreaElement).value).toContain("old-revision");
+    expect(submissions("/guidance")).toHaveLength(0);
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Message actions for Bob" }));
+    await user.click(screen.getByRole("button", { name: "Record decision…" }));
+    expect(submissions("/commands")).toHaveLength(0);
+    await user.type(screen.getByLabelText("Message team"), " @B");
+    await user.click(screen.getByRole("button", { name: "@Bob" }));
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
     await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
     expect(submissions("/commands")[0]).toMatchObject({
       taskId: "os-task",
       decision: true,
       mentionActorIds: ["bob"],
-      context: {
-        path: "src/filters.ts",
-        line: 12,
-        attemptId: "attempt-new",
-        attempt: 2,
-        diffRevision: "revision-safe",
-      },
+      context: { kind: "event", eventCursor: 1, label: "Discussion by Bob" },
     });
-    await user.click(screen.getByRole("button", { name: "Use as agent guidance" }));
-    expect(
-      (screen.getByLabelText("Guide the active agent") as HTMLTextAreaElement).value
-    ).toContain("From Bob");
-    expect(
-      (screen.getByLabelText("Guide the active agent") as HTMLTextAreaElement).value
-    ).toContain("attempt 1");
-    expect(
-      (screen.getByLabelText("Guide the active agent") as HTMLTextAreaElement).value
-    ).toContain("old-revision");
-    expect(submissions("/guidance")).toHaveLength(0);
   });
 
-  it("marks only displayed activity as read, preserves observed completion time and supports task subscriptions", async () => {
+  it("keeps notifications contextual and task subscriptions inside workspace options", async () => {
     const fallback = handler;
-    handler = async (url, init) => {
-      if (url.endsWith("/snapshot")) return response({ ...snapshot(), cursor: 20 });
-      if (url.endsWith("/overview"))
-        return response({
-          projectName: "Sample project",
-          observedAt: "2026-11-06T10:00:00Z",
-          tasks: [
-            ...tasks,
+    handler = async (url, init) =>
+      url.endsWith("/notifications")
+        ? response([
             {
-              id: "done",
-              title: "Finished navigation",
-              status: "closed",
-              completedAt: "2026-11-06T09:00:00Z",
-              summary: "Navigation now restores filters",
-              questions: [],
-            },
-            {
-              id: "question",
-              title: "Search decision",
-              status: "blocked",
-              questions: ["Which fields should be searchable?"],
-            },
-          ],
-        });
-      if (url.includes("/events?"))
-        return response({
-          events: [
-            {
-              projectId: "project-a",
+              id: "n",
               cursor: 3,
-              type: "message_appended",
+              taskId: "os-other",
               actorId: "bob",
+              kind: "mention",
+              content: "Please review search",
               createdAt: "2026-11-06T09:30:00Z",
-              payload: {
-                id: "event",
-                content: "Ready for review",
-                actorId: "bob",
-                displayName: "Bob",
-                createdAt: "2026-11-06T09:30:00Z",
-                cursor: 3,
-              },
             },
-          ],
-          nextCursor: 3,
-          hasMore: false,
-        });
-      if (url.endsWith("/notifications"))
-        return response([
-          {
-            id: "n",
-            cursor: 3,
-            taskId: "os-task",
-            actorId: "bob",
-            kind: "mention",
-            content: "Please review",
-            createdAt: "2026-11-06T09:30:00Z",
-          },
-        ]);
-      return fallback(url, init);
-    };
+          ])
+        : fallback(url, init);
     const user = userEvent.setup();
     setup();
     await join(user);
-    await user.click(screen.getByRole("tab", { name: /Activity/ }));
-    await screen.findByText("Navigation now restores filters");
-    await screen.findByText("Which fields should be searchable?");
-    await screen.findByText("Please review");
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Mark caught up" })).toBeEnabled()
-    );
-    await user.click(screen.getByRole("button", { name: "Mark caught up" }));
-    expect(submissions("/preferences")[0]).toMatchObject({
-      seenCursor: 3,
-      markSeen: true,
-      markSeenAt: "2026-11-06T10:00:00Z",
-    });
-    await user.selectOptions(screen.getByLabelText("Selected task"), "os-task");
-    await user.click(screen.getByRole("button", { name: "Follow task" }));
-    expect(submissions("/preferences").at(-1)).toMatchObject({ subscribedTaskIds: ["os-task"] });
+    expect(screen.queryByRole("tab", { name: /Activity/ })).not.toBeInTheDocument();
+    await user.click(screen.getByText("Updates (1)"));
+    await user.click(screen.getByRole("button", { name: "Please review search" }));
+    await screen.findByRole("heading", { name: /Improve search results/ });
+    await user.click(screen.getByRole("button", { name: "Workspace options" }));
+    await user.click(screen.getByRole("button", { name: "Notify me" }));
+    expect(submissions("/preferences").at(-1)).toMatchObject({ subscribedTaskIds: ["os-other"] });
     expect(submissions("/preferences").at(-1)).not.toHaveProperty("markSeen");
+    expect(submissions("/preferences").at(-1)).not.toHaveProperty("markSeenAt");
+    expect(screen.queryByRole("button", { name: "Follow task" })).not.toBeInTheDocument();
   });
+
   it("creates expiring named invitations, copies their links and revokes active access", async () => {
     const fallback = handler;
     const invited = {
@@ -594,11 +694,9 @@ describe("Execute collaboration", () => {
     window.__OPENSPRINT_LOCAL_SESSION__ = "local-secret";
     const user = userEvent.setup();
     setup();
-    await user.click(await screen.findByRole("button", { name: "Invite" }));
+    await user.click(await screen.findByRole("button", { name: "Share" }));
     await user.type(screen.getByLabelText("Person’s name"), "Maya");
-    await user.selectOptions(screen.getByLabelText("Access"), "participant");
-    await user.selectOptions(screen.getByLabelText("Expires"), "24");
-    await user.click(screen.getByRole("button", { name: "Create invite" }));
+    await user.click(screen.getByRole("button", { name: "Create invitation" }));
     const link = await screen.findByLabelText("Private invitation link");
     expect((link as HTMLInputElement).value).toContain(
       "/collaborate/project-a#invite=invite-secret"
@@ -610,6 +708,7 @@ describe("Execute collaboration", () => {
     });
     await user.click(screen.getByRole("button", { name: "Copy link" }));
     await screen.findByText("Invitation copied.");
+    await user.click(screen.getByText("Manage access"));
     await user.click(await screen.findByRole("button", { name: "Revoke Maya invitation" }));
     await screen.findByText("Revoked");
     expect(screen.queryByLabelText("Private invitation link")).not.toBeInTheDocument();
@@ -625,7 +724,7 @@ describe("Execute collaboration", () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    await inspect(user);
+    await chooseTask(user);
     await user.click(await screen.findByRole("button", { name: "Decline handoff" }));
     expect(submissions("/commands")[0]).toMatchObject({
       type: "respond_control",
@@ -640,6 +739,7 @@ describe("Execute collaboration", () => {
     });
     await user.click(await screen.findByRole("button", { name: "Cancel request" }));
     expect(submissions("/commands")[2]).toMatchObject({ type: "cancel_control_request" });
+    await user.click(screen.getByLabelText("Agent control options"));
     await user.click(screen.getByRole("button", { name: "Release control" }));
     expect(submissions("/commands")[3]).toMatchObject({
       type: "handoff_control",
@@ -666,8 +766,12 @@ describe("Execute collaboration", () => {
     await act(async () => {
       await client.invalidateQueries();
     });
-    await waitFor(() => expect(screen.getByLabelText("Guide the active agent")).toHaveValue(""));
-    await user.click(screen.getByText("Drafts from earlier attempts"));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Guide agent" })).not.toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: "Guide agent…" }));
+    expect(screen.getByLabelText("Guide the active agent")).toHaveValue("");
+    await user.click(screen.getByText("Earlier drafts"));
     expect(screen.getByText("Only for attempt two")).toBeInTheDocument();
     current = {
       ...current,
@@ -709,7 +813,7 @@ describe("Execute collaboration", () => {
       await client.invalidateQueries();
     });
     await screen.findByRole("heading", { name: "Access to this project ended" });
-    expect(screen.queryByLabelText("Discuss with participants")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Message team")).not.toBeInTheDocument();
   });
   it("does not recreate a named session cache when a heartbeat finishes after leaving", async () => {
     const fallback = handler;
@@ -723,7 +827,7 @@ describe("Execute collaboration", () => {
     setup();
     await join(user);
     await waitFor(() => expect(submissions("/presence")).toHaveLength(1));
-    await user.click(screen.getByRole("button", { name: "Leave session" }));
+    await leave(user);
     await screen.findByRole("heading", { name: "Join collaboration" });
     await act(async () => resolveBeat(response(people)));
     expect(client.getQueryCache().getAll()).toHaveLength(0);
@@ -750,90 +854,15 @@ describe("Execute collaboration", () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    await user.selectOptions(screen.getByLabelText("Selected task"), "os-task");
-    await user.selectOptions(screen.getByLabelText("Selected task"), "os-other");
+    await chooseTask(user);
+    await chooseTask(user, "os-other");
     expect(submissions("/presence")).toHaveLength(1);
     await act(async () => resolveBeat(response(people)));
     await waitFor(() => expect(submissions("/presence")).toHaveLength(2));
     expect(submissions("/presence")[1].taskId).toBe("os-other");
   });
-  it("retrieves paged full history after unread events were marked caught up", async () => {
+  it("retrieves complete paged discussion inline after the read boundary has advanced", async () => {
     const fallback = handler;
-    handler = async (url, init) => {
-      if (url.endsWith("/snapshot"))
-        return response({ ...snapshot(), cursor: 400, messagesHasMore: true });
-      if (url.endsWith("/preferences"))
-        return response({ seenCursor: 400, subscribedTaskIds: [], seenAt: "2026-11-06T10:00:00Z" });
-      if (url.includes("/events?after=400"))
-        return response({ events: [], nextCursor: 400, hasMore: false });
-      if (url.includes("/events?after=0"))
-        return response({
-          events: [
-            {
-              projectId: "project-a",
-              cursor: 1,
-              actorId: "bob",
-              createdAt: "2026-11-05T10:00:00Z",
-              type: "message_appended",
-              payload: {
-                id: "old",
-                actorId: "bob",
-                displayName: "Bob",
-                taskId: "os-task",
-                content: "Older architectural decision",
-                createdAt: "2026-11-05T10:00:00Z",
-                cursor: 1,
-              },
-            },
-          ],
-          nextCursor: 200,
-          hasMore: true,
-        });
-      if (url.includes("/events?after=200"))
-        return response({
-          events: [
-            {
-              projectId: "project-a",
-              cursor: 201,
-              actorId: "bob",
-              createdAt: "2026-11-05T11:00:00Z",
-              type: "message_appended",
-              payload: {
-                id: "next-old",
-                actorId: "bob",
-                displayName: "Bob",
-                taskId: "os-task",
-                content: "Later architectural follow-up",
-                createdAt: "2026-11-05T11:00:00Z",
-                cursor: 201,
-              },
-            },
-          ],
-          nextCursor: 400,
-          hasMore: false,
-        });
-      return fallback(url, init);
-    };
-    const user = userEvent.setup();
-    setup();
-    await join(user);
-    await user.click(screen.getByRole("tab", { name: /Activity/ }));
-    await screen.findByText("You’re caught up on discussion and control.");
-    await user.click(screen.getByRole("button", { name: "Full history" }));
-    await screen.findByText("Bob said: Older architectural decision");
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Mark caught up" })).toBeEnabled()
-    );
-    await user.click(screen.getByRole("button", { name: "Load more activity" }));
-    await screen.findByText("Bob said: Later architectural follow-up");
-    expect(submissions("/preferences")).toHaveLength(0);
-    await user.click(screen.getByRole("button", { name: "Since last read" }));
-    await screen.findByText("You’re caught up on discussion and control.");
-  });
-
-  it("acknowledges a displayed activity page while later pages and mentions remain unread", async () => {
-    const fallback = handler;
-    let seenCursor = 0;
     const event = (cursor: number, content: string) => ({
       projectId: "project-a",
       cursor,
@@ -841,43 +870,28 @@ describe("Execute collaboration", () => {
       createdAt: "2026-11-06T09:30:00Z",
       type: "message_appended",
       payload: {
-        id: `message-${cursor}`,
+        id: "message-" + cursor,
         actorId: "bob",
         displayName: "Bob",
-        taskId: "os-task",
         content,
-        createdAt: "2026-11-06T09:30:00Z",
         cursor,
+        createdAt: "2026-11-06T09:30:00Z",
       },
     });
-    const notifications = [
-      { cursor: 1, content: "Mention on the displayed page" },
-      { cursor: 201, content: "Unread mention on a later page" },
-    ].map((notification) => ({
-      ...notification,
-      id: `mention-${notification.cursor}`,
-      taskId: "os-task",
-      actorId: "bob",
-      kind: "mention",
-      createdAt: "2026-11-06T09:30:00Z",
-    }));
     handler = async (url, init) => {
-      if (url.endsWith("/snapshot")) return response({ ...snapshot(), cursor: 400 });
-      if (url.endsWith("/preferences")) {
-        if (init?.method === "PUT") seenCursor = JSON.parse(String(init.body)).seenCursor;
-        return response({ seenCursor, subscribedTaskIds: [], seenAt: null });
-      }
-      if (url.endsWith("/notifications"))
-        return response(notifications.filter((notification) => notification.cursor > seenCursor));
+      if (url.endsWith("/snapshot"))
+        return response({ ...snapshot(), cursor: 400, messagesHasMore: true });
+      if (url.endsWith("/preferences") && !init?.method)
+        return response({ seenCursor: 400, subscribedTaskIds: [], seenAt: "2026-11-06T09:00:00Z" });
       if (url.includes("/events?after=0"))
         return response({
-          events: [event(1, "Discussion on the displayed page")],
+          events: [event(1, "Older architectural decision")],
           nextCursor: 200,
           hasMore: true,
         });
       if (url.includes("/events?after=200"))
         return response({
-          events: [event(201, "Discussion on a later page")],
+          events: [event(201, "Later architectural follow-up")],
           nextCursor: 400,
           hasMore: false,
         });
@@ -888,26 +902,51 @@ describe("Execute collaboration", () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    await user.click(screen.getByRole("tab", { name: /Activity/ }));
-    await screen.findByText("Bob said: Discussion on the displayed page");
-    await screen.findByText("Mention on the displayed page");
-    expect(screen.getByRole("button", { name: "Load more activity" })).toBeInTheDocument();
-    expect(screen.queryByText("Bob said: Discussion on a later page")).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Mark caught up" })).toBeEnabled()
-    );
-    await user.click(screen.getByRole("button", { name: "Mark caught up" }));
-    await waitFor(() => expect(submissions("/preferences")).toHaveLength(1));
-    expect(submissions("/preferences")[0]).toMatchObject({
-      seenCursor: 200,
-      markSeen: true,
-      markSeenAt: "2026-11-06T10:00:00Z",
-    });
-    await waitFor(() =>
-      expect(screen.queryByText("Mention on the displayed page")).not.toBeInTheDocument()
-    );
-    expect(screen.getByText("Unread mention on a later page")).toBeInTheDocument();
-    expect(seenCursor).toBe(200);
+    await user.click(screen.getByRole("button", { name: "Earlier messages" }));
+    await screen.findByText("Older architectural decision");
+    await user.click(screen.getByRole("button", { name: "Load more messages" }));
+    await screen.findByText("Later architectural follow-up");
+    expect(submissions("/preferences")).toHaveLength(0);
+    expect(screen.queryByRole("tab", { name: /Activity/ })).not.toBeInTheDocument();
+  });
+
+  it("never marks fetched discussion pages read without observing their contents", async () => {
+    const fallback = handler;
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({ ...snapshot(), cursor: 400, messagesHasMore: true });
+      if (url.includes("/events?after=0"))
+        return response({
+          events: [
+            {
+              projectId: "project-a",
+              cursor: 1,
+              actorId: "bob",
+              createdAt: "2026-11-06T09:30:00Z",
+              type: "message_appended",
+              payload: {
+                id: "old",
+                actorId: "bob",
+                displayName: "Bob",
+                content: "Unread earlier discussion",
+                cursor: 1,
+                createdAt: "2026-11-06T09:30:00Z",
+              },
+            },
+          ],
+          nextCursor: 200,
+          hasMore: true,
+        });
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await user.click(screen.getByRole("button", { name: "Earlier messages" }));
+    await screen.findByText("Unread earlier discussion");
+    expect(submissions("/preferences")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Mark caught up" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Load more messages" })).toBeInTheDocument();
   });
 
   it("keeps the connection live after a rejected action and dismisses the action error", async () => {
@@ -927,13 +966,687 @@ describe("Execute collaboration", () => {
     const user = userEvent.setup();
     setup();
     await join(user);
-    await user.type(screen.getByLabelText("Discuss with participants"), "Keep this draft");
-    await user.click(screen.getByRole("button", { name: "Send message" }));
+    await user.type(screen.getByLabelText("Message team"), "Keep this draft");
+    await user.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByText("Control changed; refresh before retrying.");
-    expect(screen.getByText(/Live · Alice/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "People in this workspace" })).toBeInTheDocument();
     expect(screen.queryByText("Connection interrupted · retrying")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Dismiss error" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
-    expect(screen.getByLabelText("Discuss with participants")).toHaveValue("Keep this draft");
+    expect(screen.getByLabelText("Message team")).toHaveValue("Keep this draft");
+  });
+
+  it("acknowledges only actually observed contiguous discussion records without acknowledging fetched work completions", async () => {
+    enableObservedReading();
+    const fallback = handler;
+    const events = [discussionEvent(1), discussionEvent(2), discussionEvent(3)];
+    let seenCursor = 0;
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({
+          ...snapshot(),
+          cursor: 30,
+          messages: events.map((event) => event.payload),
+        });
+      if (url.includes("/events?")) return response({ events, nextCursor: 3, hasMore: false });
+      if (url.endsWith("/preferences")) {
+        if (init?.method === "PUT") seenCursor = JSON.parse(String(init.body)).seenCursor;
+        return response({ seenCursor, subscribedTaskIds: [], seenAt: "2026-11-06T08:00:00Z" });
+      }
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await screen.findByText("Discussion 3");
+    expect(submissions("/preferences")).toHaveLength(0);
+    await observeRows(2, 3);
+    expect(submissions("/preferences")).toHaveLength(0);
+    await observeRows(1);
+    await waitFor(() => expect(submissions("/preferences")).toHaveLength(1));
+    expect(submissions("/preferences")[0]).toEqual({ seenCursor: 3 });
+    expect(submissions("/preferences")[0]).not.toHaveProperty("markSeen");
+    expect(submissions("/preferences")[0]).not.toHaveProperty("markSeenAt");
+  });
+
+  it("does not acknowledge messages behind sheets, in a hidden document, or while unfocused", async () => {
+    enableObservedReading();
+    const fallback = handler;
+    const event = discussionEvent(1, "os-task");
+    window.__OPENSPRINT_LOCAL_SESSION__ = "local-secret";
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({
+          ...snapshot(),
+          cursor: 1,
+          principal: { actorId: "local-user", displayName: "Local user", role: "controller" },
+          messages: [event.payload],
+        });
+      if (url.includes("/events?"))
+        return response({ events: [event], nextCursor: 1, hasMore: false });
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await screen.findByRole("button", { name: "Share" });
+    await chooseTask(user);
+    expect(submissions("/preferences")).toHaveLength(0);
+    await user.click(screen.getByRole("tab", { name: "Discussion" }));
+    await screen.findByText("Discussion 1");
+    await user.click(screen.getByRole("button", { name: "Share" }));
+    await observeRows(1);
+    expect(submissions("/preferences")).toHaveLength(0);
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Guide agent…" }));
+    await observeRows(1);
+    expect(submissions("/preferences")).toHaveLength(0);
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "People in this workspace" }));
+    await observeRows(1);
+    expect(submissions("/preferences")).toHaveLength(0);
+    await user.keyboard("{Escape}");
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await observeRows(1);
+    expect(submissions("/preferences")).toHaveLength(0);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    await observeRows(1);
+    expect(submissions("/preferences")).toHaveLength(0);
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    await observeRows(1);
+    await waitFor(() => expect(submissions("/preferences")).toHaveLength(1));
+  });
+
+  it("keeps other-task and later-page events unread while accepting previously viewed contiguous records", async () => {
+    enableObservedReading();
+    const fallback = handler;
+    const events = [
+      discussionEvent(1, "os-task"),
+      discussionEvent(2, "os-other"),
+      discussionEvent(3, "os-task"),
+    ];
+    let seenCursor = 0;
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({
+          ...snapshot(),
+          cursor: 400,
+          messages: events.map((event) => event.payload),
+          messagesHasMore: true,
+        });
+      if (url.includes("/events?after=0"))
+        return response({ events, nextCursor: 3, hasMore: true });
+      if (url.includes("/events?after=3"))
+        return response({ events: [], nextCursor: 3, hasMore: true });
+      if (url.endsWith("/preferences")) {
+        if (init?.method === "PUT") seenCursor = JSON.parse(String(init.body)).seenCursor;
+        return response({ seenCursor, subscribedTaskIds: [], seenAt: null });
+      }
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await chooseTask(user);
+    await observeRows(1, 3);
+    await waitFor(() => expect(submissions("/preferences").at(-1)?.seenCursor).toBe(1));
+    expect(screen.queryByText("Discussion 2")).not.toBeInTheDocument();
+    await chooseTask(user, "os-other");
+    await screen.findByText("Discussion 2");
+    await observeRows(2);
+    await waitFor(() => expect(submissions("/preferences").at(-1)?.seenCursor).toBe(3));
+    expect(submissions("/preferences").some((value) => value.seenCursor > 3)).toBe(false);
+  });
+
+  it("retries a failed read acknowledgment after dismissal without requiring a new message or hot-looping", async () => {
+    enableObservedReading();
+    const fallback = handler;
+    const event = discussionEvent(1);
+    let requests = 0;
+    let seenCursor = 0;
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({ ...snapshot(), cursor: 1, messages: [event.payload] });
+      if (url.includes("/events?"))
+        return response({ events: [event], nextCursor: 1, hasMore: false });
+      if (url.endsWith("/preferences")) {
+        if (init?.method === "PUT") {
+          if (++requests === 1) throw new Error("Read acknowledgment lost");
+          seenCursor = JSON.parse(String(init.body)).seenCursor;
+        }
+        return response({ seenCursor, subscribedTaskIds: [], seenAt: null });
+      }
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await observeRows(1);
+    await screen.findByText("Read acknowledgment lost");
+    expect(requests).toBe(1);
+    await observeRows(1);
+    expect(requests).toBe(1);
+    await user.click(screen.getByRole("button", { name: "Dismiss error" }));
+    await waitFor(() => expect(requests).toBe(2));
+    expect(submissions("/preferences")[1]).toEqual(submissions("/preferences")[0]);
+  });
+
+  it("preserves an unsent team draft while preparing an explicit decision", async () => {
+    const fallback = handler;
+    const message = { ...discussionEvent(1).payload, content: "Use URL state" };
+    handler = async (url, init) =>
+      url.endsWith("/snapshot")
+        ? response({ ...snapshot(), messages: [message] })
+        : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await user.type(screen.getByLabelText("Message team"), "My unfinished reply");
+    await user.click(screen.getByRole("button", { name: "Message actions for Bob" }));
+    await user.click(screen.getByRole("button", { name: "Record decision…" }));
+    expect((screen.getByLabelText("Message team") as HTMLTextAreaElement).value).toContain(
+      "My unfinished reply"
+    );
+    expect((screen.getByLabelText("Message team") as HTMLTextAreaElement).value).toContain(
+      "Decision from Bob:"
+    );
+    expect((screen.getByLabelText("Message team") as HTMLTextAreaElement).value).toContain(
+      "Use URL state"
+    );
+    expect(submissions("/commands")).toHaveLength(0);
+  });
+
+  it("mentions only the selected actor when two participants have the same display name", async () => {
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/presence")
+        ? response([
+            ...people,
+            { ...people[1], actorId: "bob-two", clientId: "bob-two-browser", taskId: "os-task" },
+          ])
+        : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await user.type(screen.getByLabelText("Message team"), "Hello @B");
+    await user.click(screen.getByRole("button", { name: /@Bob.*Keep filters when navigating/ }));
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+    expect(submissions("/commands")[0].mentionActorIds).toEqual(["bob-two"]);
+  });
+
+  it("dismisses workspace and message menus before leaving the workspace and restores focus", async () => {
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/snapshot")
+        ? response({ ...snapshot(), messages: [discussionEvent(1).payload] })
+        : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    const options = screen.getByRole("button", { name: "Workspace options" });
+    await user.click(options);
+    expect(screen.getByRole("button", { name: "Leave session" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(options).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Leave session" })).not.toBeInTheDocument();
+    const actions = screen.getByRole("button", { name: "Message actions for Bob" });
+    await user.click(actions);
+    expect(screen.getByRole("button", { name: "Record decision…" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(actions).toHaveFocus();
+    await user.click(actions);
+    await user.click(screen.getByLabelText("Message team"));
+    expect(screen.queryByRole("button", { name: "Record decision…" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { top: 450, expected: "bottom" },
+    { top: 110, expected: "top" },
+  ])("keeps message actions within the discussion viewport at $top", async ({ top, expected }) => {
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/snapshot")
+        ? response({ ...snapshot(), messages: [discussionEvent(1).payload] })
+        : fallback(url, init);
+    const rect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement
+    ) {
+      if (this.dataset.testid === "team-discussion-scroll")
+        return { top: 100, bottom: 500 } as DOMRect;
+      if (this.getAttribute("aria-label") === "Message actions for Bob")
+        return { top, bottom: top + 32 } as DOMRect;
+      return rect.call(this);
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(100);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await user.click(screen.getByRole("button", { name: "Message actions for Bob" }));
+    const menu = screen.getByRole("button", { name: "Record decision…" }).parentElement!;
+    expect(menu.style[expected as "top" | "bottom"]).toBe("100%");
+    expect(menu.style.maxHeight).toBe(expected === "bottom" ? "350px" : "358px");
+    // Scrolling changes the available space while the menu remains open.
+    top = 300;
+    fireEvent.scroll(screen.getByTestId("team-discussion-scroll"));
+    expect(menu.style.top).toBe("100%");
+    expect(menu.style.bottom).toBe("");
+    expect(menu.style.maxHeight).toBe("168px");
+  });
+
+  it("does not offer redundant earlier history when replay only repeats the visible discussion", async () => {
+    const fallback = handler;
+    const event = discussionEvent(1);
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({ ...snapshot(), messages: [event.payload], cursor: 1 });
+      if (url.includes("/events?"))
+        return response({ events: [event], nextCursor: 1, hasMore: false });
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await screen.findByText("Discussion 1");
+    expect(screen.queryByRole("button", { name: "Earlier messages" })).not.toBeInTheDocument();
+  });
+
+  it("keeps existing host work usable and defers shared context and history until opened", async () => {
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={client}>
+        <CollaborationSession
+          projectId="project-a"
+          token="alice-project-token"
+          selectedTaskId="os-task"
+          taskTitle={tasks[0].title}
+          embedded
+          workContent={<p>Existing task work</p>}
+        />
+      </QueryClientProvider>
+    );
+    await screen.findByRole("button", { name: "People in this workspace" });
+    expect(screen.getByText("Existing task work")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Work" })).toHaveAttribute("aria-selected", "true");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/context"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/guidance/"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/events?"))).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Workspace options" }));
+    await user.click(screen.getByRole("button", { name: "View changes…" }));
+    await screen.findByRole("textbox", { name: "Task diff" });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/context"))).toBe(true);
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("tab", { name: "Discussion" }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/guidance/"))).toBe(true)
+    );
+  });
+
+  it("attaches displayed line and attempt provenance from a direct code selection", async () => {
+    const fallback = handler;
+    const diff = [
+      "diff --git a/src/filters.ts b/src/filters.ts",
+      "--- a/src/filters.ts",
+      "+++ b/src/filters.ts",
+      "@@ -10,1 +12,1 @@",
+      "+keepFilters();",
+    ].join("\n");
+    handler = async (url, init) =>
+      url.endsWith("/context")
+        ? response({
+            task: tasks[0],
+            activeRun,
+            diff,
+            output: "Checking filters",
+            source: "active",
+            sourceAttemptId: "attempt-new",
+            sourceAttempt: 2,
+            diffRevision: "revision-safe",
+          })
+        : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await chooseTask(user);
+    await user.click(screen.getByRole("tab", { name: "Work" }));
+    const patch = await screen.findByRole("textbox", { name: "Task diff" });
+    const node = patch.querySelector("pre")!.firstChild!;
+    const range = document.createRange();
+    range.setStart(node, diff.indexOf("keepFilters"));
+    range.setEnd(node, diff.indexOf("keepFilters") + "keepFilters".length);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    fireEvent.mouseUp(patch);
+    await user.click(screen.getByRole("button", { name: "Comment on src/filters.ts:12" }));
+    await user.type(screen.getByLabelText("Message team"), "Preserve this behavior");
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+    expect(submissions("/commands")[0]).toMatchObject({
+      taskId: "os-task",
+      context: {
+        kind: "file",
+        path: "src/filters.ts",
+        line: 12,
+        attemptId: "attempt-new",
+        attempt: 2,
+        diffRevision: "revision-safe",
+      },
+    });
+    expect(screen.queryByLabelText("Line")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Comment on a file")).not.toBeInTheDocument();
+  });
+
+  it("opens at the latest discussion, follows only a pinned reader, preserves paged history anchors, and reveals an accepted own message", async () => {
+    mockConversationGeometry();
+    enableObservedReading();
+    const fallback = handler;
+    const events = Array.from({ length: 10 }, (_, index) => discussionEvent(index + 1));
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({
+          ...snapshot(),
+          cursor: events.at(-1)!.cursor,
+          messages: events.slice(5).map((event) => event.payload),
+          messagesHasMore: true,
+        });
+      if (url.includes("/events?")) {
+        const after = Number(new URL(url, "http://localhost").searchParams.get("after"));
+        const selected =
+          after === 0 ? events.slice(0, 3) : events.filter((event) => event.cursor > after);
+        return response({
+          events: selected,
+          nextCursor: selected.at(-1)?.cursor ?? after,
+          hasMore: after === 0,
+        });
+      }
+      if (url.endsWith("/commands")) {
+        const input = JSON.parse(String(init?.body));
+        const own = discussionEvent(events.at(-1)!.cursor + 1);
+        own.payload = {
+          ...own.payload,
+          actorId: "alice",
+          displayName: "Alice",
+          content: input.content,
+        };
+        events.push(own);
+        return response({});
+      }
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    const scroll = screen.getByTestId("team-discussion-scroll");
+    await waitFor(() => expect(scroll.scrollTop).toBe(scroll.scrollHeight - scroll.clientHeight));
+    expect(scroll.scrollTop).toBe(300);
+    await observeRows(9, 10);
+    expect(submissions("/preferences")).toHaveLength(0);
+    scroll.scrollTop = 100;
+    fireEvent.scroll(scroll);
+    events.push(discussionEvent(11));
+    await act(async () => {
+      await client.invalidateQueries();
+    });
+    await screen.findByText("Discussion 11");
+    expect(scroll.scrollTop).toBe(100);
+    expect(screen.getByRole("button", { name: "Jump to latest" })).toBeInTheDocument();
+    const anchor = scroll.querySelector<HTMLElement>('[data-conversation-entry="message-7"]')!;
+    expect(anchor.getBoundingClientRect().top).toBe(0);
+    await user.click(screen.getByRole("button", { name: "Earlier messages" }));
+    expect(anchor.getBoundingClientRect().top).toBe(0);
+    expect(scroll.scrollTop).toBe(400);
+    await user.click(screen.getByRole("button", { name: "Load more messages" }));
+    await screen.findByText("Discussion 5");
+    expect(anchor.getBoundingClientRect().top).toBe(0);
+    expect(scroll.scrollTop).toBe(600);
+    await user.click(screen.getByRole("button", { name: "Jump to latest" }));
+    await waitFor(() => expect(scroll.scrollTop).toBe(scroll.scrollHeight - scroll.clientHeight));
+    events.push(discussionEvent(12));
+    await act(async () => {
+      await client.invalidateQueries();
+    });
+    await screen.findByText("Discussion 12");
+    expect(scroll.scrollTop).toBe(scroll.scrollHeight - scroll.clientHeight);
+    scroll.scrollTop = 200;
+    fireEvent.scroll(scroll);
+    await user.type(screen.getByLabelText("Message team"), "My accepted message");
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await screen.findByText("My accepted message");
+    await waitFor(() => expect(scroll.scrollTop).toBe(scroll.scrollHeight - scroll.clientHeight));
+    expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
+  });
+
+  it("starts each selected task at its latest message and ignores a previous task's delayed send when reading another task", async () => {
+    mockConversationGeometry();
+    const fallback = handler;
+    const events = Array.from({ length: 10 }, (_, index) =>
+      discussionEvent(index + 1, index < 5 ? "os-task" : "os-other")
+    );
+    let release!: (response: Response) => void;
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({
+          ...snapshot(),
+          cursor: events.at(-1)!.cursor,
+          messages: events.map((event) => event.payload),
+        });
+      if (url.includes("/events?")) {
+        const after = Number(new URL(url, "http://localhost").searchParams.get("after"));
+        const selected = events.filter((event) => event.cursor > after);
+        return response({ events: selected, nextCursor: events.at(-1)!.cursor, hasMore: false });
+      }
+      if (url.endsWith("/commands"))
+        return new Promise<Response>((resolve) => {
+          release = resolve;
+        });
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await chooseTask(user);
+    const scroll = screen.getByTestId("team-discussion-scroll");
+    await waitFor(() => expect(scroll.scrollTop).toBe(300));
+    scroll.scrollTop = 100;
+    fireEvent.scroll(scroll);
+    await user.type(screen.getByLabelText("Message team"), "Task A pending message");
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await chooseTask(user, "os-other");
+    await waitFor(() => expect(scroll.scrollTop).toBe(300));
+    scroll.scrollTop = 100;
+    fireEvent.scroll(scroll);
+    await act(async () => {
+      release(response({}));
+    });
+    await waitFor(() => expect(screen.getByLabelText("Message team")).not.toBeDisabled());
+    expect(scroll.scrollTop).toBe(100);
+    await user.click(screen.getByRole("tab", { name: "Work" }));
+    await user.click(screen.getByRole("tab", { name: "Discussion" }));
+    expect(scroll.scrollTop).toBe(100);
+  });
+
+  it("replaces a selected mention identity when the whole draft is replaced with another person of the same name", async () => {
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/presence")
+        ? response([
+            people[0],
+            {
+              ...people[1],
+              actorId: "maya-a",
+              clientId: "maya-a-browser",
+              displayName: "Maya",
+              taskId: "os-task",
+            },
+            {
+              ...people[1],
+              actorId: "maya-b",
+              clientId: "maya-b-browser",
+              displayName: "Maya",
+              taskId: "os-other",
+            },
+          ])
+        : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    const field = screen.getByLabelText("Message team");
+    await user.type(field, "@Ma");
+    await user.click(screen.getByRole("button", { name: /@Maya.*Keep filters when navigating/ }));
+    await user.clear(field);
+    await user.type(field, "@Ma");
+    await user.click(screen.getByRole("button", { name: /@Maya.*Improve search results/ }));
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+    expect(submissions("/commands")[0].mentionActorIds).toEqual(["maya-b"]);
+  });
+
+  it("retains the explicit mention while typing ordinary text after it", async () => {
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/presence") ? response(mayaParticipants()) : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await chooseMaya(user, tasks[0].title);
+    await user.type(screen.getByLabelText("Message team"), "thanks for checking");
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+    expect(submissions("/commands")[0].mentionActorIds).toEqual(["maya-a"]);
+  });
+
+  it.each(["partial edit", "removal"])(
+    "drops a mention identity after %s of its displayed token",
+    async (edit) => {
+      const fallback = handler;
+      handler = async (url, init) =>
+        url.endsWith("/presence") ? response(mayaParticipants()) : fallback(url, init);
+      const user = userEvent.setup();
+      setup();
+      await join(user);
+      await chooseMaya(user, tasks[0].title);
+      const field = screen.getByLabelText("Message team") as HTMLTextAreaElement;
+      await user.click(field);
+      field.setSelectionRange(edit === "removal" ? 0 : 2, edit === "removal" ? 6 : 3);
+      fireEvent.select(field);
+      await user.keyboard(edit === "removal" ? "{Backspace}No mention remains" : "x");
+      await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+      await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+      expect(submissions("/commands")[0]).not.toHaveProperty("mentionActorIds");
+    }
+  );
+
+  it("replaces identity when another actor is chosen over identical selected mention text", async () => {
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/presence") ? response(mayaParticipants()) : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await chooseMaya(user, tasks[0].title);
+    const field = screen.getByLabelText("Message team") as HTMLTextAreaElement;
+    await user.click(field);
+    field.setSelectionRange(0, 5);
+    fireEvent.select(field);
+    await user.click(screen.getByRole("button", { name: /@Maya.*Improve search results/ }));
+    expect(field).toHaveValue("@Maya ");
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+    expect(submissions("/commands")[0].mentionActorIds).toEqual(["maya-b"]);
+  });
+
+  it.each(["first", "second"])(
+    "preserves the other actor when the %s of two identical-name mentions is deleted",
+    async (removed) => {
+      const fallback = handler;
+      handler = async (url, init) =>
+        url.endsWith("/presence") ? response(mayaParticipants()) : fallback(url, init);
+      const user = userEvent.setup();
+      setup();
+      await join(user);
+      await chooseMaya(user, tasks[0].title);
+      await chooseMaya(user, tasks[1].title);
+      const field = screen.getByLabelText("Message team") as HTMLTextAreaElement;
+      expect(field).toHaveValue("@Maya @Maya ");
+      await user.click(field);
+      field.setSelectionRange(removed === "first" ? 0 : 6, removed === "first" ? 6 : 12);
+      fireEvent.select(field);
+      await user.keyboard("{Backspace}");
+      expect(field).toHaveValue("@Maya ");
+      await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+      await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+      expect(submissions("/commands")[0].mentionActorIds).toEqual([
+        removed === "first" ? "maya-b" : "maya-a",
+      ]);
+    }
+  );
+
+  it.each(["AnnSmith", "Ann Smith"])(
+    "does not mention Ann when the selected person is %s",
+    async (name) => {
+      const fallback = handler;
+      handler = async (url, init) =>
+        url.endsWith("/presence")
+          ? response([
+              people[0],
+              { ...people[1], actorId: "ann", displayName: "Ann" },
+              {
+                ...people[1],
+                actorId: "ann-smith",
+                clientId: "ann-smith-browser",
+                displayName: name,
+              },
+            ])
+          : fallback(url, init);
+      const user = userEvent.setup();
+      setup();
+      await join(user);
+      await user.type(screen.getByLabelText("Message team"), "@Ann");
+      await user.click(screen.getByRole("button", { name: "@" + name, exact: true }));
+      await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+      await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+      expect(submissions("/commands")[0].mentionActorIds).toEqual(["ann-smith"]);
+    }
+  );
+
+  it("distinguishes identical suggestion contexts without inserting identifiers into the message", async () => {
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/presence")
+        ? response(mayaParticipants().map((person) => ({ ...person, taskId: "os-task" })))
+        : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await user.type(screen.getByLabelText("Message team"), "@Ma");
+    await user.click(screen.getByRole("button", { name: /@Maya.*maya-b/ }));
+    expect(screen.getByLabelText("Message team")).toHaveValue("@Maya ");
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+    expect(submissions("/commands")[0]).toMatchObject({
+      content: "@Maya",
+      mentionActorIds: ["maya-b"],
+    });
+  });
+
+  it("conservatively drops identities when a value replacement has no before-edit input range", async () => {
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/presence") ? response(mayaParticipants()) : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await chooseMaya(user, tasks[0].title);
+    await chooseMaya(user, tasks[1].title);
+    const field = screen.getByLabelText("Message team") as HTMLTextAreaElement;
+    await user.click(field);
+    fireEvent.change(field, { target: { value: "@Maya " } });
+    await user.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await waitFor(() => expect(submissions("/commands")).toHaveLength(1));
+    expect(submissions("/commands")[0]).not.toHaveProperty("mentionActorIds");
   });
 });

@@ -231,6 +231,41 @@ describe("TaskDetailSidebar", () => {
     mockTasksGet.mockResolvedValue({});
   });
 
+  it("keeps earlier chat and saved drafts secondary in the shared workspace", async () => {
+    const user = userEvent.setup();
+    const props = {
+      ...createMinimalProps({ agentOutput: ["Current agent output"] }),
+      embeddedHeader: true,
+      chatMessages: [
+        {
+          role: "user" as const,
+          content: "Earlier instruction",
+          timestamp: "2026-11-07T10:00:00Z",
+        },
+      ],
+      chatDraftStorageKey: "shared-workspace-earlier-chat",
+    };
+    localStorage.setItem(
+      props.chatDraftStorageKey,
+      JSON.stringify("Keep this unsent earlier draft")
+    );
+    try {
+      renderSidebar(props, { preloadedState: defaultPreloadedState });
+      expect(screen.queryByRole("tab", { name: "Chat" })).not.toBeInTheDocument();
+      expect(screen.queryByTestId("task-detail-title")).not.toBeInTheDocument();
+      const history = screen.getByText("Earlier agent chat").closest("details")!;
+      expect(history).not.toHaveAttribute("open");
+      await user.click(screen.getByText("Earlier agent chat"));
+      expect(history).toHaveAttribute("open");
+      expect(screen.getByText("Earlier instruction")).toBeVisible();
+      expect(screen.getByLabelText("Execute chat message")).toHaveValue(
+        "Keep this unsent earlier draft"
+      );
+    } finally {
+      localStorage.removeItem(props.chatDraftStorageKey);
+    }
+  });
+
   it("renders task title from selectedTaskData", () => {
     const props = createMinimalProps();
     renderSidebar(props, {
@@ -2643,7 +2678,9 @@ describe("TaskDetailSidebar", () => {
       })
     ).toBeInTheDocument();
 
-    expect(screen.queryByRole("button", { name: /collapse chat with agent/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /collapse chat with agent/i })
+    ).not.toBeInTheDocument();
 
     const tablist = screen.getByRole("tablist", { name: "Agent output tabs" });
     expect(tablist).toBeInTheDocument();

@@ -6,6 +6,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import type { CollaborationMentionToken } from "./collaborationMentions";
 import type { CollaborationContext } from "@opensprint/shared";
 
 /** In-memory composition state belongs to the project view, independent of dock visibility. */
@@ -14,6 +15,7 @@ export interface CollaborationDraftState {
   contexts: Record<string, CollaborationContext | undefined>;
   decisions: Record<string, boolean>;
   mentions: Record<string, string[]>;
+  mentionTokens: Record<string, CollaborationMentionToken[]>;
   guidanceDrafts: Record<string, Record<string, string>>;
   messageIdentities: Record<string, { payload: string; id: string } | undefined>;
   guidanceIdentities: Record<string, { payload: string; id: string } | undefined>;
@@ -25,6 +27,7 @@ export function emptyCollaborationDrafts(): CollaborationDraftState {
     contexts: {},
     decisions: {},
     mentions: {},
+    mentionTokens: {},
     guidanceDrafts: {},
     messageIdentities: {},
     guidanceIdentities: {},

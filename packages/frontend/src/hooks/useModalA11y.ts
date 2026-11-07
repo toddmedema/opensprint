@@ -1,11 +1,11 @@
 import { useEffect, useRef, type RefObject } from "react";
 
 const FOCUSABLE_SELECTOR =
-  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])';
 
 function getFocusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (el) => !el.hasAttribute("disabled") && el.offsetParent !== null
+    (el) => el.tabIndex >= 0 && !el.hasAttribute("disabled") && el.offsetParent !== null
   );
 }
 
@@ -140,6 +140,16 @@ export function useModalA11y({
       requestAnimationFrame(() => {
         if (revision !== focusRevision) return;
         const parent = modalSessions.at(-1)?.container;
+        const currentFocus = document.activeElement as HTMLElement | null;
+        // A user may already have opened another action before this frame runs.
+        if (
+          currentFocus?.isConnected &&
+          currentFocus !== document.body &&
+          currentFocus !== document.documentElement &&
+          !container.contains(currentFocus) &&
+          (!parent || parent.contains(currentFocus))
+        )
+          return;
         const target = triggerElement ?? previouslyFocused;
         if (target?.isConnected && (!parent || parent.contains(target))) {
           target.focus();

@@ -48,7 +48,7 @@ export function CollaborationControl({
   actorName: (actorId: string) => string;
   /** Increment when a contextual message action prepares, rather than submits, an instruction. */
   guidanceRequest?: number;
-  /** Pause discussion read acknowledgments while the instruction sheet covers it. */
+  /** Pause discussion read acknowledgments while control actions or the instruction sheet cover it. */
   onOpenChange?: (open: boolean) => void;
 }) {
   const id = useId();
@@ -58,6 +58,7 @@ export function CollaborationControl({
     attemptId: string | null;
   } | null>(null);
   const previousRequest = useRef(guidanceRequest);
+  const ownershipMenuRef = useRef<HTMLDetailsElement>(null);
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
   const reportedOpen = useRef(false);
@@ -82,6 +83,22 @@ export function CollaborationControl({
     sheetTarget.taskId === taskId &&
     sheetTarget.attemptId === (active?.attemptId ?? null)
   );
+  const closeOwnershipMenu = useCallback(() => {
+    if (ownershipMenuRef.current) ownershipMenuRef.current.open = false;
+    reportOpen(sheetOpen);
+  }, [reportOpen, sheetOpen]);
+  useEffect(() => {
+    const outside = (event: MouseEvent) => {
+      const menu = ownershipMenuRef.current;
+      if (menu?.open && event.target instanceof Node && !menu.contains(event.target))
+        closeOwnershipMenu();
+    };
+    document.addEventListener("mousedown", outside);
+    return () => document.removeEventListener("mousedown", outside);
+  }, [closeOwnershipMenu]);
+  useEffect(() => {
+    closeOwnershipMenu();
+  }, [taskId, active?.attemptId, principal?.role, run?.controllerId, closeOwnershipMenu]);
   const openSheet = () => {
     if (taskId && mayControl) {
       setSheetTarget({ taskId, attemptId: active?.attemptId ?? null });
@@ -153,6 +170,7 @@ export function CollaborationControl({
       | { type: "cancel_control_request" }
       | { type: "reclaim_control" }
   ) => {
+    closeOwnershipMenu();
     if (!active || !taskId || !mayControl) return;
     session.command.mutate({
       ...command,
@@ -208,15 +226,30 @@ export function CollaborationControl({
       )}
     </div>
   );
-  if (!taskId) return null;
+  if (!taskId || (!active && (!mayControl || earlierDrafts.length === 0))) return null;
   return (
     <section aria-label="Agent guidance" className="space-y-2">
       <div className="flex min-h-11 items-center justify-between gap-2">
         {active && mayControl && (ownsControl || canReclaim) ? (
-          <details className="relative min-w-0 text-xs text-theme-muted">
+          <details
+            ref={ownershipMenuRef}
+            className="relative min-w-0 text-xs text-theme-muted"
+            onToggle={(event) => reportOpen(event.currentTarget.open || sheetOpen)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) closeOwnershipMenu();
+            }}
+            onKeyDownCapture={(event) => {
+              if (event.key !== "Escape" || !event.currentTarget.open) return;
+              event.preventDefault();
+              event.stopPropagation();
+              closeOwnershipMenu();
+              event.currentTarget.querySelector("summary")?.focus();
+            }}
+          >
             <summary
               className="min-h-11 cursor-pointer truncate py-3"
               aria-label="Agent control options"
+              onClick={(event) => event.currentTarget.focus()}
             >
               {ownerLabel}
             </summary>

@@ -124,23 +124,6 @@ export function GlobalKeyboardShortcuts() {
         return;
       }
 
-      // Escape: close modal if one is open; otherwise open settings.
-      if (key === "Escape") {
-        if (isModalOpen() || isFocusInModal(e)) {
-          // The dialog owns dismissal. Cancelling during capture prevents its
-          // bubble-phase handler from distinguishing Escape from a consumed key.
-          return;
-        }
-        if (projectId) {
-          e.preventDefault();
-          navigate(`/projects/${projectId}/settings`);
-        } else {
-          e.preventDefault();
-          navigate("/settings");
-        }
-        return;
-      }
-
       // ?: open help everywhere; F1: web-only help shortcut.
       if (key === "?" || (!isElectron && key === "F1")) {
         e.preventDefault();
@@ -155,10 +138,31 @@ export function GlobalKeyboardShortcuts() {
     [isElectron, navigate, pathname, projectId]
   );
 
+  const handleEscape = useCallback(
+    (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        isEditableElement(event.target) ||
+        isModalOpen() ||
+        isFocusInModal(event)
+      )
+        return;
+      event.preventDefault();
+      navigate(projectId ? `/projects/${projectId}/settings` : "/settings");
+    },
+    [navigate, projectId]
+  );
+
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown, true);
-    return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [handleKeyDown]);
+    // Menus and other dismissible surfaces consume Escape before global navigation.
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [handleKeyDown, handleEscape]);
 
   // Electron app menu: Help and Settings trigger navigate via IPC; handle here so we have router context
   useEffect(() => {

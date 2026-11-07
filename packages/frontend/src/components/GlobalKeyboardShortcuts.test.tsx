@@ -18,6 +18,26 @@ function DismissibleModal() {
   ) : null;
 }
 
+function DismissibleMenu() {
+  const [open, setOpen] = useState(true);
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || !open) return;
+          event.preventDefault();
+          setOpen(false);
+        }}
+      >
+        Message actions
+      </button>
+      {open && <div role="menu">Message commands</div>}
+    </div>
+  );
+}
+
 function LocationDisplay() {
   const loc = useLocation();
   return <span data-testid="location">{loc.pathname}</span>;
@@ -382,6 +402,47 @@ describe("GlobalKeyboardShortcuts", () => {
       expect(screen.queryByRole("dialog", { name: "Dismissible modal" })).not.toBeInTheDocument()
     );
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/execute");
+  });
+
+  it("lets a nonmodal menu consume Escape before a later press opens settings", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/execute"]}>
+        <GlobalKeyboardShortcuts />
+        <DismissibleMenu />
+        <LocationDisplay />
+      </MemoryRouter>
+    );
+    const button = screen.getByRole("button", { name: "Message actions" });
+    button.focus();
+    const escape = () =>
+      button.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+      );
+
+    await act(escape);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/execute");
+
+    await act(escape);
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/settings");
+  });
+
+  it("keeps phase shortcuts active before a focused control stops propagation", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/execute"]}>
+        <GlobalKeyboardShortcuts />
+        <button type="button" onKeyDown={(event) => event.stopPropagation()}>
+          Task control
+        </button>
+        <LocationDisplay />
+      </MemoryRouter>
+    );
+    const button = screen.getByRole("button", { name: "Task control" });
+    button.focus();
+    await act(() =>
+      button.dispatchEvent(new KeyboardEvent("keydown", { key: "4", bubbles: true }))
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/eval");
   });
 
   it("? opens project help when on a project route (same context as help icon)", async () => {

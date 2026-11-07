@@ -1,18 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, type Ref } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { collaborationApi } from "../../api/collaboration";
 
-/** Show deduplicated project presence and entry actions without owning the shared session. */
+/** Show project presence beside one sharing entry point without owning the workspace. */
 export function CollaborationLauncher({
   projectId,
-  open,
-  onOpen,
-  onInvite,
+  onShare,
+  shareButtonRef,
 }: {
   projectId: string;
-  open: boolean;
-  onOpen: () => void;
-  onInvite: () => void;
+  onShare: () => void;
+  shareButtonRef?: Ref<HTMLButtonElement>;
 }) {
   const client = useMemo(() => collaborationApi(projectId), [projectId]);
   const presence = useQuery({
@@ -43,11 +41,13 @@ export function CollaborationLauncher({
           ))}
         </span>
       )}
-      <button type="button" className="btn-secondary text-xs" aria-pressed={open} onClick={onOpen}>
-        Collaborate
-      </button>
-      <button type="button" className="btn-secondary text-xs" onClick={onInvite}>
-        Invite
+      <button
+        ref={shareButtonRef}
+        type="button"
+        className="btn-secondary text-xs"
+        onClick={onShare}
+      >
+        Share
       </button>
     </div>
   );

@@ -21,7 +21,8 @@ export function useCollaborationSession(
   projectId: string,
   token: string | undefined,
   taskId: string | null,
-  activityMode: "unread" | "history" = "unread"
+  activityMode: "unread" | "history" = "unread",
+  visible: { context?: boolean; history?: boolean } = {}
 ) {
   const client = useMemo(() => collaborationApi(projectId, token), [projectId, token]);
   const [connectionId] = useState(() => crypto.randomUUID());
@@ -86,7 +87,7 @@ export function useCollaborationSession(
   const context = useQuery({
     queryKey: [...queryKey, "context", taskId],
     queryFn: ({ signal }) => client.taskContext(taskId!, signal),
-    enabled: enabled && Boolean(taskId),
+    enabled: enabled && Boolean(taskId) && visible.context !== false,
     refetchInterval: 3000,
     retry: false,
     gcTime: 0,
@@ -102,7 +103,7 @@ export function useCollaborationSession(
   const history = useQuery({
     queryKey: [...queryKey, "history", taskId],
     queryFn: ({ signal }) => client.guidanceHistory(taskId!, signal),
-    enabled: enabled && Boolean(taskId),
+    enabled: enabled && Boolean(taskId) && visible.history !== false,
     refetchInterval: 2000,
     retry: false,
     gcTime: 0,
@@ -113,7 +114,7 @@ export function useCollaborationSession(
     initialPageParam: activityStart,
     queryFn: ({ pageParam, signal }) => client.replay(pageParam, signal),
     getNextPageParam: (page) => (page.hasMore ? page.nextCursor : undefined),
-    enabled: enabled && Boolean(preferences.data),
+    enabled: enabled && Boolean(preferences.data) && visible.history !== false,
     refetchInterval: 5000,
     retry: false,
     gcTime: 0,
@@ -206,14 +207,14 @@ export function useCollaborationSession(
       : activeRun?.control;
   const connectionError =
     snapshot.error ??
-    context.error ??
+    (visible.context !== false ? context.error : null) ??
     active.error ??
-    history.error ??
+    (visible.history !== false ? history.error : null) ??
     overview.error ??
     presence.error ??
     notifications.error ??
     preferences.error ??
-    activity.error ??
+    (visible.history !== false ? activity.error : null) ??
     presenceError;
   const error = connectionError ?? command.error ?? savePreferences.error;
   return {

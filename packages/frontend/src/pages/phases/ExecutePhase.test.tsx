@@ -50,7 +50,10 @@ let currentTaskGetImpl = mockGet.getMockImplementation();
 
 const mockGetSettings = vi.fn().mockResolvedValue({ teamMembers: [] });
 
-vi.mock("../../api/client", () => ({
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/client")>()),
+  // Native Work stays usable while its shared connection is pending; full collaboration is covered in Execute E2E.
+  request: vi.fn(() => new Promise<never>(() => {})),
   api: {
     tasks: {
       list: vi.fn().mockResolvedValue([]),
@@ -922,7 +925,6 @@ describe("ExecutePhase top bar", () => {
 
     expect(screen.getByText("Awaiting approval")).toBeInTheDocument();
   });
-
 });
 
 describe("ExecutePhase epic merge mode indicator", () => {
@@ -1011,7 +1013,6 @@ describe("ExecutePhase epic merge mode indicator", () => {
     });
     expect(screen.getByText("Agent enhancement experiment in progress")).toBeInTheDocument();
   });
-
 });
 
 describe("ExecutePhase expandable search bar", () => {
@@ -1476,54 +1477,57 @@ describe("ExecutePhase mobile layout", () => {
     localStorage.setItem("opensprint.executeView", "kanban");
   });
 
-  it("task detail sidebar renders inline (no overlay, no backdrop) on mobile viewport (< 768px)", async () => {
+  it("shows the shared task workspace as a focused mobile overlay", async () => {
     const originalInnerWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { value: MOBILE_BREAKPOINT - 1, writable: true });
 
-    mockGet.mockResolvedValue({
-      id: "epic-1.1",
-      title: "Task A",
-      epicId: "epic-1",
-      kanbanColumn: "in_progress",
-      description: "",
-      type: "task",
-      status: "open",
-      labels: [],
-      dependencies: [],
-      createdAt: "",
-      updatedAt: "",
-      priority: 0,
-      assignee: null,
-    });
-    const tasks = [
-      {
+    try {
+      mockGet.mockResolvedValue({
         id: "epic-1.1",
         title: "Task A",
         epicId: "epic-1",
         kanbanColumn: "in_progress",
+        description: "",
+        type: "task",
+        status: "open",
+        labels: [],
+        dependencies: [],
+        createdAt: "",
+        updatedAt: "",
         priority: 0,
         assignee: null,
-      },
-    ];
-    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
-    render(
-      <MemoryRouter>
-        <Provider store={store}>
-          <ExecutePhase projectId="proj-1" />
-        </Provider>
-      </MemoryRouter>
-    );
+      });
+      const tasks = [
+        {
+          id: "epic-1.1",
+          title: "Task A",
+          epicId: "epic-1",
+          kanbanColumn: "in_progress",
+          priority: 0,
+          assignee: null,
+        },
+      ];
+      const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+      render(
+        <MemoryRouter>
+          <Provider store={store}>
+            <ExecutePhase projectId="proj-1" />
+          </Provider>
+        </MemoryRouter>
+      );
 
-    await vi.waitFor(() => {
-      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
-    });
+      await vi.waitFor(() => {
+        expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+      });
 
-    // Execute sidebar uses overlayOnMobile=false: always inline, no backdrop (same as Plan/Sketch)
-    expect(
-      screen.queryByRole("button", { name: "Close sidebar (backdrop)" })
-    ).not.toBeInTheDocument();
-
-    Object.defineProperty(window, "innerWidth", { value: originalInnerWidth, writable: true });
+      expect(screen.getByRole("dialog", { name: "Sidebar panel" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Close task workspace" })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Close sidebar", exact: true })
+      ).not.toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "innerWidth", { value: originalInnerWidth, writable: true });
+    }
   });
 });
 
@@ -1792,7 +1796,6 @@ describe("ExecutePhase view toggle", () => {
     expect(screen.getByRole("heading", { name: "In Progress" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Ready" })).toBeInTheDocument();
   });
-
 });
 
 describe("ExecutePhase Redux integration", () => {
@@ -1993,7 +1996,7 @@ describe("ExecutePhase Redux integration", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
 
-    const closeBtn = screen.getByRole("button", { name: "Close task detail" });
+    const closeBtn = screen.getByRole("button", { name: "Close task workspace" });
     await user.click(closeBtn);
 
     expect(store.getState().execute.selectedTaskId).toBeNull();
@@ -2026,7 +2029,7 @@ describe("ExecutePhase Redux integration", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
 
-    const closeBtn = screen.getByRole("button", { name: "Close task detail" });
+    const closeBtn = screen.getByRole("button", { name: "Close task workspace" });
     await user.click(closeBtn);
 
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -3142,5 +3145,4 @@ describe("ExecutePhase task detail cached state", () => {
     expect(screen.getByTestId("task-detail-loading")).toBeInTheDocument();
     expect(screen.getByTestId("artifacts-loading")).toBeInTheDocument();
   });
-
 });

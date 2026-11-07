@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ResizableSidebar } from "./ResizableSidebar";
 import { MOBILE_BREAKPOINT } from "../../lib/constants";
@@ -29,6 +29,45 @@ describe("ResizableSidebar", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("lets workspace content provide the close action while preserving mobile Escape dismissal", async () => {
+    const restoreViewport = mockViewportWidth(390);
+    const onClose = vi.fn();
+    const offsetParent = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetParent");
+    Object.defineProperty(HTMLElement.prototype, "offsetParent", {
+      configurable: true,
+      get() {
+        return this.parentElement;
+      },
+    });
+    try {
+      const user = userEvent.setup();
+      render(
+        <ResizableSidebar
+          storageKey={STORAGE_KEY}
+          responsive
+          onClose={onClose}
+          showMobileCloseButton={false}
+        >
+          <button type="button" onClick={onClose}>
+            Close workspace
+          </button>
+        </ResizableSidebar>
+      );
+      expect(
+        screen.queryByRole("button", { name: "Close sidebar", exact: true })
+      ).not.toBeInTheDocument();
+      const close = screen.getByRole("button", { name: "Close workspace" });
+      await waitFor(() => expect(close).toHaveFocus());
+      fireEvent.keyDown(close, { key: "Tab", cancelable: true });
+      expect(close).toHaveFocus();
+      await user.keyboard("{Escape}");
+      expect(onClose).toHaveBeenCalledOnce();
+    } finally {
+      restoreViewport();
+      if (offsetParent) Object.defineProperty(HTMLElement.prototype, "offsetParent", offsetParent);
+    }
   });
 
   it("renders children with default width", () => {
