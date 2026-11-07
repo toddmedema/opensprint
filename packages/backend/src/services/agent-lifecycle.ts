@@ -76,6 +76,10 @@ export interface AgentRunState {
   lastOutputAtIso?: string;
   outputLog: string[];
   outputLogBytes: number;
+  /** Retained output may start mid-record after eviction or recovery; shared views omit that record. */
+  outputLogTruncated?: boolean;
+  /** Reattached output is read from mutable checkout files and is not a shareable guest source. */
+  outputLogFromFile?: boolean;
   /** Buffer for NDJSON-style agent output so tool-call lifecycle can be parsed across chunk boundaries. */
   outputParseBuffer: string;
   /** Active tool call ids inferred from structured agent output (primarily Cursor/Codex NDJSON). */
@@ -196,6 +200,8 @@ export class AgentLifecycleManager {
     runState.startedAt = runState.startedAt || new Date().toISOString();
     runState.outputLog = [];
     runState.outputLogBytes = 0;
+    runState.outputLogTruncated = false;
+    runState.outputLogFromFile = false;
     runState.outputParseBuffer = "";
     runState.activeToolCallIds.clear();
     runState.activeToolCallSummaries.clear();
@@ -402,6 +408,9 @@ export class AgentLifecycleManager {
     }
     runState.outputLog = [];
     runState.outputLogBytes = 0;
+    // Reattached streams begin at an existing file offset, potentially inside a record.
+    runState.outputLogTruncated = true;
+    runState.outputLogFromFile = true;
     runState.outputParseBuffer = "";
     runState.activeToolCallIds.clear();
     runState.activeToolCallSummaries.clear();
@@ -1057,6 +1066,7 @@ function appendOutputLog(state: AgentRunState, chunk: string): void {
   while (state.outputLogBytes > MAX_OUTPUT_LOG_BYTES && state.outputLog.length > 1) {
     const dropped = state.outputLog.shift()!;
     state.outputLogBytes -= dropped.length;
+    state.outputLogTruncated = true;
   }
 }
 

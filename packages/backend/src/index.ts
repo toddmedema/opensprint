@@ -17,7 +17,7 @@ import {
   hasClientConnected,
   broadcastToProject,
 } from "./websocket/index.js";
-import { DEFAULT_API_PORT } from "@opensprint/shared";
+import { getApiPort } from "./utils/api-port.js";
 import { taskStore } from "./services/task-store.service.js";
 import { wireTaskStoreEvents } from "./task-store-events.js";
 import { orchestratorService } from "./services/orchestrator.service.js";
@@ -36,6 +36,11 @@ import { appendRuntimeTrace } from "./utils/runtime-trace.js";
 import { startBackendDeathSentinel } from "./utils/backend-death-sentinel.js";
 import { isIntegrationEncryptionKeyConfigured } from "./services/token-encryption.service.js";
 import { CollaborationService } from "./services/collaboration.service.js";
+import {
+  createCollaborationSharingApp,
+  createProjectCollaborationRouter,
+  getCollaborationSharingConfig,
+} from "./collaboration-app.js";
 
 // Electron launches backend with ELECTRON_RUN_AS_NODE=1 so process.execPath can run JS.
 // Clear it immediately so backend child processes (agent CLIs) are not forced into Node mode.
@@ -49,13 +54,19 @@ const runtimeSessionId = crypto.randomUUID();
 setLogSessionId(runtimeSessionId);
 eventLogService.setInstanceId(runtimeSessionId);
 
-const port = parseInt(process.env.PORT || String(DEFAULT_API_PORT), 10);
+const port = getApiPort();
+const sharingConfig = getCollaborationSharingConfig();
 
 acquirePidFile(port);
 
 const services = createAppServices();
 const app = createApp(services);
 const server = createServer(app);
+const sharingServer = sharingConfig
+  ? createServer(
+      createCollaborationSharingApp(sharingConfig, createProjectCollaborationRouter(services))
+    )
+  : null;
 
 wireDatabaseLifecycle(services);
 
@@ -113,6 +124,7 @@ function stopRuntimeHeartbeat(): void {
 }
 
 // Graceful shutdown
+/** Stop host/guest listeners and database services while honoring the configured agent preservation policy. */
 const shutdown = async (trigger: string) => {
   if (shuttingDown) {
     logShutdown.warn("Shutdown already in progress", { trigger });
@@ -135,6 +147,8 @@ const shutdown = async (trigger: string) => {
     await killAllTrackedAgentProcesses();
   }
   stopProcessReaper();
+  sharingServer?.close();
+  sharingServer?.closeAllConnections();
   await stopDatabaseFeatures();
 
   const flushDone = taskStore.flushPersist();
@@ -188,7 +202,23 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 
 const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || "5173", 10);
 
+sharingServer?.on("error", (error: NodeJS.ErrnoException) => {
+  logStartup.error("Collaboration listener could not start", {
+    port: sharingConfig?.port,
+    error: error.message,
+  });
+  void shutdown("collaboration_server_error");
+});
+
 server.listen(port, "127.0.0.1", () => {
+  if (sharingServer && sharingConfig) {
+    sharingServer.listen(sharingConfig.port, "127.0.0.1", () => {
+      logStartup.info("Collaboration-only listener ready", {
+        port: sharingConfig.port,
+        origin: sharingConfig.origin,
+      });
+    });
+  }
   logStartup.info("Open Sprint backend listening", { url: `http://localhost:${port}` });
   logStartup.info("WebSocket server ready", { url: `ws://localhost:${port}/ws` });
   if (process.env.NODE_ENV !== "test" && !isIntegrationEncryptionKeyConfigured()) {

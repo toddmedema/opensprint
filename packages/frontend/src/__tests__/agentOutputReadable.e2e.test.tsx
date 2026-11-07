@@ -27,7 +27,8 @@ const mockLiveOutput = vi.fn();
 const mockAgentsActive = vi.fn();
 const mockTaskDiagnostics = vi.fn();
 
-vi.mock("../api/client", () => ({
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
   api: {
     tasks: {
       list: vi.fn().mockResolvedValue([]),
@@ -54,6 +55,31 @@ vi.mock("../api/client", () => ({
       listByProject: vi.fn().mockResolvedValue([]),
     },
   },
+}));
+
+vi.mock("../api/collaboration", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/collaboration")>()),
+  collaborationApi: (projectId: string) => ({
+    snapshot: async () => ({
+      projectId,
+      sessionId: "default",
+      cursor: 0,
+      messages: [],
+      messagesHasMore: false,
+      runs: [],
+      runsHasMore: false,
+      principal: { actorId: "local-user", displayName: "Local user", role: "controller" },
+    }),
+    replay: async (after: number) => ({ events: [], nextCursor: after, hasMore: false }),
+    overview: async () => ({ projectName: "Test", tasks: [] }),
+    presence: async () => [],
+    preferences: async () => ({ seenCursor: 0, subscribedTaskIds: [] }),
+    notifications: async () => [],
+    activeRun: async () => null,
+    guidanceHistory: async () => [],
+    heartbeat: async () => [],
+    leave: async () => undefined,
+  }),
 }));
 
 const basePlan = {

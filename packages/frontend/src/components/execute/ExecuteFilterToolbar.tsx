@@ -43,6 +43,7 @@ function ListIcon({ className }: { className?: string }) {
 }
 
 interface ExecuteFilterToolbarProps {
+  collaborationControl?: React.ReactNode;
   chipConfig: { label: string; filter: StatusFilter; count: number }[];
   statusFilter: StatusFilter;
   setStatusFilter: (f: StatusFilter) => void;
@@ -64,8 +65,10 @@ interface ExecuteFilterToolbarProps {
   mergeStrategy?: "per_task" | "per_epic";
 }
 
+/** Present Execute filters, shared-session entry, search, and view controls in one toolbar. */
 export function ExecuteFilterToolbar({
   chipConfig,
+  collaborationControl,
   statusFilter,
   setStatusFilter,
   awaitingApproval,
@@ -141,6 +144,7 @@ export function ExecuteFilterToolbar({
 
   const right = (
     <>
+      {collaborationControl}
       {searchExpanded ? (
         <div
           className="flex items-center gap-1 animate-fade-in"

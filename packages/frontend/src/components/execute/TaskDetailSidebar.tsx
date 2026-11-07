@@ -87,6 +87,8 @@ export interface TaskDetailCallbacks {
 
 export interface TaskDetailSidebarProps {
   projectId: string;
+  /** Omit duplicate title/close chrome when hosted by the shared task workspace. */
+  embeddedHeader?: boolean;
   selectedTask: string;
   taskDetail: TaskDetailData;
   agentOutput: string[];
@@ -159,6 +161,7 @@ function areTaskDetailSidebarPropsEqual(
   const cb = (a: TaskDetailSidebarProps) => a.callbacks;
   if (
     prev.projectId !== next.projectId ||
+    prev.embeddedHeader !== next.embeddedHeader ||
     prev.selectedTask !== next.selectedTask ||
     !taskDataEqualExceptPriority(td(prev).selectedTaskData, td(next).selectedTaskData) ||
     td(prev).taskDetailLoading !== td(next).taskDetailLoading ||
@@ -216,6 +219,7 @@ function areTaskDetailSidebarPropsEqual(
 
 function TaskDetailSidebarInner({
   projectId,
+  embeddedHeader = false,
   selectedTask,
   taskDetail,
   agentOutput,
@@ -403,9 +407,49 @@ function TaskDetailSidebarInner({
     return () => clearTimeout(t);
   }, [selectedTask]);
 
+  const outputContent = (
+    <div className="h-full min-h-0 overflow-y-auto" data-testid="live-output-scroll-container">
+      <TaskDetailAgentOutput
+        projectId={projectId}
+        taskDetailLoading={taskDetailLoading}
+        isDoneTask={isDoneTask}
+        archivedLoading={archivedLoading}
+        archivedSessions={archivedSessions}
+        liveOutputContent={liveOutputContent}
+        completionState={completionState}
+        wsConnected={wsConnected}
+        containerRef={liveOutputRef}
+        onScroll={handleLiveOutputScroll}
+        showJumpToBottom={showJumpToBottom}
+        jumpToBottom={jumpToBottom}
+        scrollResetKey={selectedTask}
+        lastOutputReceivedAtIso={!isDoneTask && wsConnected ? lastOutputReceivedAtIso : null}
+      />
+    </div>
+  );
+  const chatContent = (
+    <div
+      className="h-full min-h-0 overflow-hidden flex flex-col"
+      data-testid="chat-section-scroll-container"
+    >
+      <ExecuteAgentChatPanel
+        messages={chatMessages}
+        sending={chatSending}
+        onSend={onChatSend ?? (() => {})}
+        draftStorageKey={chatDraftStorageKey}
+        agentRunning={activeTaskState?.state === "running"}
+        chatSupported={chatSupported}
+        chatUnsupportedReason={chatUnsupportedReason}
+        scrollResetKey={selectedTask}
+        scrollTriggerKey={chatTabScrollTrigger}
+      />
+    </div>
+  );
+
   return (
     <>
       <TaskDetailHeader
+        embedded={embeddedHeader}
         title={task?.title ?? selectedTask ?? ""}
         hasActions={hasActions}
         isBlockedTask={isBlockedTask}
@@ -548,57 +592,30 @@ function TaskDetailSidebarInner({
           sectionNavTitle={isDoneTask ? "Done Work Artifacts" : "Live agent output"}
           contentClassName="p-0"
         >
-          <ExecuteOutputTabs
-            key={selectedTask}
-            outputContent={
-              <div
-                className="h-full min-h-0 overflow-y-auto"
-                data-testid="live-output-scroll-container"
-              >
-                <TaskDetailAgentOutput
-                  projectId={projectId}
-                  taskDetailLoading={taskDetailLoading}
-                  isDoneTask={isDoneTask}
-                  archivedLoading={archivedLoading}
-                  archivedSessions={archivedSessions}
-                  liveOutputContent={liveOutputContent}
-                  completionState={completionState}
-                  wsConnected={wsConnected}
-                  containerRef={liveOutputRef}
-                  onScroll={handleLiveOutputScroll}
-                  showJumpToBottom={showJumpToBottom}
-                  jumpToBottom={jumpToBottom}
-                  scrollResetKey={selectedTask}
-                  lastOutputReceivedAtIso={
-                    !isDoneTask && wsConnected ? lastOutputReceivedAtIso : null
-                  }
-                />
-              </div>
-            }
-            chatContent={
-              <div
-                className="h-full min-h-0 overflow-hidden flex flex-col"
-                data-testid="chat-section-scroll-container"
-              >
-                <ExecuteAgentChatPanel
-                  messages={chatMessages}
-                  sending={chatSending}
-                  onSend={onChatSend ?? (() => {})}
-                  draftStorageKey={chatDraftStorageKey}
-                  agentRunning={activeTaskState?.state === "running"}
-                  chatSupported={chatSupported}
-                  chatUnsupportedReason={chatUnsupportedReason}
-                  scrollResetKey={selectedTask}
-                  scrollTriggerKey={chatTabScrollTrigger}
-                />
-              </div>
-            }
-            onTabChange={(tab) => {
-              if (tab === "chat") {
-                setChatTabScrollTrigger((n) => n + 1);
-              }
-            }}
-          />
+          {embeddedHeader ? (
+            <div className="space-y-3">
+              <div className="max-h-[500px] overflow-auto">{outputContent}</div>
+              <details className="border-t border-theme-border px-4 py-3">
+                <summary className="cursor-pointer text-xs text-theme-muted">
+                  Earlier agent chat
+                </summary>
+                <p className="mt-2 text-xs text-theme-muted">
+                  Previous chat and saved drafts remain here. Use Guide agent for shared
+                  instructions.
+                </p>
+                <div className="mt-3 h-80 min-h-0">{chatContent}</div>
+              </details>
+            </div>
+          ) : (
+            <ExecuteOutputTabs
+              key={selectedTask}
+              outputContent={outputContent}
+              chatContent={chatContent}
+              onTabChange={(tab) => {
+                if (tab === "chat") setChatTabScrollTrigger((n) => n + 1);
+              }}
+            />
+          )}
         </CollapsibleSection>
       </div>
     </>

@@ -353,6 +353,26 @@ describe("AgentLifecycleManager", () => {
       expect(mockSendAgentOutputToProject).toHaveBeenCalledWith("proj-1", "task-1", "chunk2\n");
     });
 
+    it("marks retained output as incomplete after eviction and resets the marker for a new run", async () => {
+      let onOutput: ((chunk: string) => void) | undefined;
+      mockInvokeCodingAgent.mockImplementation(
+        (_path: string, _config: unknown, options: { onOutput?: (chunk: string) => void }) => {
+          onOutput = options.onOutput;
+          return { kill: vi.fn(), pid: 9999 };
+        }
+      );
+      runState.outputLogTruncated = true;
+      runState.outputLogFromFile = true;
+      await manager.run(baseParams, runState, timers);
+      expect(runState.outputLogTruncated).toBe(false);
+      expect(runState.outputLogFromFile).toBe(false);
+      onOutput?.("Earlier output\n");
+      onOutput?.(`${"x".repeat(5 * 1024 * 1024)}\n`);
+      expect(runState.outputLogTruncated).toBe(true);
+      expect(runState.outputLog).toHaveLength(1);
+      expect(runState.outputLog[0]).not.toContain("Earlier output");
+    });
+
     it("does not append or send tool_call and code-context noise", async () => {
       let capturedOnOutput: ((chunk: string) => void) | undefined;
       mockInvokeCodingAgent.mockImplementation(
@@ -754,6 +774,8 @@ describe("AgentLifecycleManager", () => {
       await manager.resumeMonitoring(handle, baseParams, runState, timers);
 
       expect(runState.activeProcess).toBe(handle);
+      expect(runState.outputLogFromFile).toBe(true);
+      expect(runState.outputLogTruncated).toBe(true);
       expect(runState.exitHandled).toBe(false);
       expect(timers.has("outputTail")).toBe(true);
       expect(typeof runState.outputTailStop).toBe("function");

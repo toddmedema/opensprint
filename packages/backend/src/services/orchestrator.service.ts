@@ -1193,6 +1193,7 @@ export class OrchestratorService {
       : undefined;
   }
 
+  /** Restore local archival output while marking checkout-file bytes as unsuitable for guest sharing. */
   private async hydrateRecoveredOutputLog(agent: AgentRunState, promptPath: string): Promise<void> {
     const outputLogPath = path.join(path.dirname(promptPath), OPENSPRINT_PATHS.agentOutputLog);
     try {
@@ -1201,6 +1202,7 @@ export class OrchestratorService {
       const output = filterAgentOutput(raw);
       agent.outputLog = [output];
       agent.outputLogBytes = Buffer.byteLength(output);
+      agent.outputLogFromFile = true;
       const now = Date.now();
       agent.lastOutputTime = now;
       agent.lastOutputAtIso = new Date(now).toISOString();

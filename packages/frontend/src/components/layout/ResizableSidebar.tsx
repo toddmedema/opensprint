@@ -37,8 +37,12 @@ export interface ResizableSidebarProps {
   visible?: boolean;
   /** When true, on mobile (< md) renders as fixed overlay with backdrop; on md+ uses inline layout */
   responsive?: boolean;
-  /** When true (default), on mobile uses fixed overlay with backdrop. When false, always inline flex (no overlay). Use false for Execute so main content stays scrollable. */
+  /** When true (default), on mobile uses fixed overlay with backdrop. When false, always inline flex (no overlay). Use false for panels that remain inline on mobile. */
   overlayOnMobile?: boolean;
+  /** Optional top inset for mobile overlays beneath persistent app chrome. Defaults to full height. */
+  mobileTopOffset?: number;
+  /** Disable the floating close button when content provides its own close action. */
+  showMobileCloseButton?: boolean;
   /** Called when user closes overlay (button, backdrop, swipe). Required when responsive=true for overlay close affordance. */
   onClose?: () => void;
   /** Accessible label for the resize handle (default "Resize sidebar") */
@@ -134,6 +138,7 @@ function useSwipeToClose(
  * A sidebar with a draggable edge for resize. Width is persisted to localStorage.
  * Shared by Plan, Sketch, Execute, and Deliver phases (plan detail, TOC/Discuss, task detail, delivery history).
  * When responsive=true and viewport < md: renders as fixed overlay with backdrop, close button, and swipe-to-close.
+ * Mobile overlays honor mobileTopOffset so persistent navigation cannot cover their heading or close action.
  */
 export function ResizableSidebar({
   storageKey,
@@ -147,6 +152,8 @@ export function ResizableSidebar({
   visible = true,
   responsive = false,
   overlayOnMobile = true,
+  mobileTopOffset = 0,
+  showMobileCloseButton = true,
   onClose,
   resizeHandleLabel = "Resize sidebar",
   noBorder = false,
@@ -253,7 +260,9 @@ export function ResizableSidebar({
       <div
         ref={mobileOverlayDialogRef}
         className="fixed inset-0 z-[var(--sidebar-overlay-z)]"
-        style={{ "--sidebar-overlay-z": SIDEBAR_OVERLAY_Z } as React.CSSProperties}
+        style={
+          { "--sidebar-overlay-z": SIDEBAR_OVERLAY_Z, top: mobileTopOffset } as React.CSSProperties
+        }
         aria-modal="true"
         role="dialog"
         aria-label="Sidebar panel"
@@ -261,6 +270,7 @@ export function ResizableSidebar({
         {/* Semi-transparent backdrop */}
         <button
           type="button"
+          tabIndex={-1}
           onClick={onClose}
           className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           aria-label="Close sidebar (backdrop)"
@@ -282,7 +292,7 @@ export function ResizableSidebar({
           onTouchEnd={swipe.onTouchEnd}
         >
           {/* Close button — 44×44px touch target, floating top corner */}
-          {onClose && (
+          {onClose && showMobileCloseButton && (
             <div
               className={`absolute top-2 z-10 min-h-[44px] min-w-[44px] flex items-center justify-center ${
                 side === "right" ? "right-2" : "left-2"

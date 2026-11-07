@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +14,7 @@ import { createCollaborationRouter } from "../routes/collaboration.js";
 import { TaskStoreService } from "../services/task-store.service.js";
 import { AppError, errorHandler } from "../middleware/error-handler.js";
 import { VITEST_DEFAULT_LOCAL_SESSION_TOKEN } from "../services/local-session-auth.service.js";
+import { getTestDatabaseUrl } from "./test-db-helper.js";
 
 const alice: CollaborationPrincipal = {
   actorId: "alice",
@@ -22,6 +23,119 @@ const alice: CollaborationPrincipal = {
 };
 const bob: CollaborationPrincipal = { actorId: "bob", displayName: "Bob", role: "controller" };
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
+
+describe.each(["sqlite", "postgres"] as const)("project collaboration deletion (%s)", (dialect) => {
+  it("removes every collaboration record and invitation only for the deleted project, idempotently", async () => {
+    const db = await initAppDb(
+      dialect === "sqlite" ? "sqlite://:memory:" : await getTestDatabaseUrl()
+    );
+    const store = new TaskStoreService();
+    await store.init(undefined, db);
+    const service = new CollaborationService(store);
+    const project = `delete-${randomUUID()}`;
+    const otherProject = `keep-${randomUUID()}`;
+    const host: CollaborationPrincipal = {
+      actorId: "local-user",
+      displayName: "Local user",
+      role: "controller",
+    };
+    const tables = [
+      "collaboration_projects",
+      "collaboration_messages",
+      "collaboration_runs",
+      "collaboration_commands",
+      "collaboration_events",
+      "collaboration_message_context",
+      "collaboration_control_requests",
+      "collaboration_control_request_events",
+      "collaboration_run_context",
+      "collaboration_invites",
+      "collaboration_presence",
+      "collaboration_preferences",
+    ];
+    const client = await db.getClient();
+    const countRows = async (table: string, projectId: string) => {
+      const row = await client.queryOne(
+        `SELECT COUNT(*) AS count FROM ${table} WHERE project_id = $1`,
+        [projectId]
+      );
+      return Number(row?.count);
+    };
+    const seed = async (projectId: string) => {
+      const invitation = await service.createInvite(projectId, host, {
+        displayName: "Invited reviewer",
+        role: "controller",
+        expiresInHours: 1,
+      });
+      const guest = (await service.resolveInvite(projectId, invitation.token))!;
+      await service.command(projectId, host, {
+        commandId: "discussion",
+        type: "append_message",
+        content: "Project discussion",
+        taskId: "os-task",
+        context: { kind: "file", label: "src/app.ts", path: "src/app.ts" },
+      });
+      await service.command(projectId, host, {
+        commandId: "claim",
+        type: "claim_control",
+        taskId: "os-task",
+        runId: "attempt-one",
+        expectedRevision: 0,
+      });
+      await service.command(projectId, guest, {
+        commandId: "request",
+        type: "request_control",
+        taskId: "os-task",
+        runId: "attempt-one",
+        expectedRevision: 1,
+        targetActorId: guest.actorId,
+      });
+      await service.heartbeat(projectId, guest, "browser-one", "os-task");
+      await service.updatePreferences(projectId, guest, {
+        seenCursor: 1,
+        subscribedTaskIds: ["os-task"],
+      });
+      return invitation;
+    };
+    try {
+      const invitation = await seed(project);
+      const keptInvitation = await seed(otherProject);
+      const keptSnapshot = await service.snapshot(otherProject, host);
+      const keptCounts = new Map<string, number>();
+      for (const table of tables) {
+        expect(await countRows(table, project), table).toBeGreaterThan(0);
+        keptCounts.set(table, await countRows(table, otherProject));
+      }
+
+      await store.deleteByProjectId(project);
+      await store.deleteByProjectId(project);
+
+      expect(await service.resolveInvite(project, invitation.token)).toBeNull();
+      expect(await service.presence(project)).toEqual([]);
+      expect(await service.snapshot(project, host)).toMatchObject({
+        cursor: 0,
+        messages: [],
+        runs: [],
+      });
+      for (const table of tables) {
+        expect(await countRows(table, project), table).toBe(0);
+        expect(await countRows(table, otherProject), table).toBe(keptCounts.get(table));
+      }
+      expect(await service.resolveInvite(otherProject, keptInvitation.token)).not.toBeNull();
+      expect(await service.snapshot(otherProject, host)).toEqual(keptSnapshot);
+      expect(await service.presence(otherProject)).toHaveLength(1);
+    } finally {
+      for (const projectId of [project, otherProject]) {
+        for (const table of tables)
+          await client.execute(`DELETE FROM ${table} WHERE project_id = $1`, [projectId]);
+        await client.execute("DELETE FROM collaboration_project_lifecycle WHERE project_id=$1", [
+          projectId,
+        ]);
+      }
+      await db.close();
+    }
+  });
+});
 
 describe("durable project collaboration", () => {
   let db: AppDb;
@@ -152,7 +266,25 @@ describe("durable project collaboration", () => {
       },
       (actorId) => actorId === next.actorId
     );
-    expect(handed.run).toEqual({ runId: "run-1", controllerId: next.actorId, revision: 2 });
+    expect(handed.run).toMatchObject({
+      runId: "run-1",
+      controllerId: owner.actorId,
+      revision: 2,
+      request: { targetActorId: next.actorId },
+    });
+    const accepted = await service.command(
+      "A",
+      next,
+      {
+        type: "respond_control",
+        commandId: "accept",
+        runId: "run-1",
+        expectedRevision: 2,
+        accept: true,
+      },
+      () => true
+    );
+    expect(accepted.run).toEqual({ runId: "run-1", controllerId: next.actorId, revision: 3 });
     await expect(
       service.command("A", owner, {
         commandId: "stale",
@@ -164,6 +296,7 @@ describe("durable project collaboration", () => {
     expect((await service.snapshot("B", alice)).runs).toEqual([]);
     expect((await service.replay("A")).events.map((e) => e.type)).toEqual([
       "control_claimed",
+      "control_requested",
       "control_handed_off",
     ]);
   });
@@ -224,6 +357,18 @@ describe("durable project collaboration", () => {
     release();
     expect(await guidance).toBe("accepted");
     await handoff;
+    await service.command(
+      "A",
+      bob,
+      {
+        type: "respond_control",
+        commandId: "accept",
+        runId: "run-1",
+        expectedRevision: 2,
+        accept: true,
+      },
+      () => true
+    );
     await expect(
       service.withControl("A", alice, "run-1", async () => "forbidden")
     ).rejects.toMatchObject({ statusCode: 403 });
@@ -232,7 +377,7 @@ describe("durable project collaboration", () => {
       type: "handoff_control",
       commandId: "release",
       runId: "run-1",
-      expectedRevision: 2,
+      expectedRevision: 3,
       targetActorId: null,
     });
     await expect(service.assertControl("A", local, "run-1")).rejects.toMatchObject({
@@ -242,9 +387,9 @@ describe("durable project collaboration", () => {
       type: "claim_control",
       commandId: "local-claim",
       runId: "run-1",
-      expectedRevision: 3,
+      expectedRevision: 4,
     });
-    expect(await service.assertControl("A", local, "run-1")).toBe(4);
+    expect(await service.assertControl("A", local, "run-1")).toBe(5);
   });
 
   it("serializes TaskStore, repository writes, and reads on the shared SQLite connection without nesting deadlocks", async () => {
@@ -388,7 +533,13 @@ describe("durable project collaboration", () => {
         await request(app)
           .post(`${endpoint}/commands`)
           .auth("alice-secret", { type: "bearer" })
-          .send({ commandId: "claim", type: "claim_control", runId: "one", expectedRevision: 0 })
+          .send({
+            commandId: "claim",
+            type: "claim_control",
+            taskId: "os-one",
+            runId: "run-one",
+            expectedRevision: 0,
+          })
       ).status
     ).toBe(403);
     expect(
@@ -472,6 +623,18 @@ describe("durable project collaboration", () => {
         runId: "run-one",
         expectedRevision: 1,
         targetActorId: "local-user",
+      },
+      (actorId) => access.canControlActor("A", actorId)
+    );
+    await service.command(
+      "A",
+      { actorId: "local-user", displayName: "Local user", role: "controller" },
+      {
+        type: "respond_control",
+        commandId: "accept-local",
+        runId: "run-one",
+        expectedRevision: 2,
+        accept: true,
       },
       (actorId) => access.canControlActor("A", actorId)
     );
