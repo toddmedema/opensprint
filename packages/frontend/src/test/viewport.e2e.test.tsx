@@ -34,7 +34,8 @@ const mockTasksList = vi.fn();
 const mockPlansList = vi.fn();
 const mockExecuteStatus = vi.fn();
 const mockTaskGet = vi.fn();
-vi.mock("../api/client", () => ({
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
   api: {
     projects: {
       get: (...args: unknown[]) => mockProjectsGet(...args),
@@ -62,6 +63,31 @@ vi.mock("../api/client", () => ({
       listGlobal: vi.fn().mockResolvedValue([]),
     },
   },
+}));
+
+vi.mock("../api/collaboration", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/collaboration")>()),
+  collaborationApi: (projectId: string) => ({
+    snapshot: async () => ({
+      projectId,
+      sessionId: "default",
+      cursor: 0,
+      messages: [],
+      messagesHasMore: false,
+      runs: [],
+      runsHasMore: false,
+      principal: { actorId: "local-user", displayName: "Local user", role: "controller" },
+    }),
+    replay: async (after: number) => ({ events: [], nextCursor: after, hasMore: false }),
+    overview: async () => ({ projectName: "Test Project", tasks: [] }),
+    presence: async () => [],
+    preferences: async () => ({ seenCursor: 0, subscribedTaskIds: [] }),
+    notifications: async () => [],
+    activeRun: async () => null,
+    guidanceHistory: async () => [],
+    heartbeat: async () => [],
+    leave: async () => undefined,
+  }),
 }));
 
 vi.mock("../store/middleware/websocketMiddleware", () => ({
@@ -266,7 +292,9 @@ describe("viewport E2E: critical flows", () => {
           { timeout: 15000 }
         );
 
-        const closeBtn = screen.getByRole("button", { name: "Close task detail" });
+        expect(screen.getAllByTestId("task-detail-title")).toHaveLength(1);
+        expect(screen.getByRole("tab", { name: "Work" })).toHaveAttribute("aria-selected", "true");
+        const closeBtn = screen.getByRole("button", { name: "Close task workspace" });
         await user.click(closeBtn);
 
         await waitFor(
@@ -314,7 +342,9 @@ describe("viewport E2E: critical flows", () => {
           expect(screen.getByTestId("task-detail-title")).toHaveTextContent("Task A");
         });
 
-        await user.click(screen.getByRole("button", { name: "Close task detail" }));
+        expect(screen.getAllByTestId("task-detail-title")).toHaveLength(1);
+        expect(screen.getByRole("tab", { name: "Work" })).toHaveAttribute("aria-selected", "true");
+        await user.click(screen.getByRole("button", { name: "Close task workspace" }));
 
         await waitFor(() => {
           expect(screen.queryByTestId("task-detail-title")).not.toBeInTheDocument();
