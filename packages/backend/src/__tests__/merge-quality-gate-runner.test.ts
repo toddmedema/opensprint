@@ -18,6 +18,7 @@ import {
   looksLikeEnoentOpeningMissingWorktreeSource,
   runMergeQualityGates,
 } from "../services/merge-quality-gate-runner.js";
+import { runCommand as runRealCommand } from "../utils/command-runner.js";
 
 describe("looksLikeEnoentOpeningMissingWorktreeSource", () => {
   const wt = "/Users/me/proj/.opensprint/runtime/worktrees/os-abc";
@@ -1042,6 +1043,105 @@ src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Hea
     expect(failure?.reason).toContain("package-lock.json");
   });
 
+  it("runs watch-by-default npm tests once in a noninteractive environment", async () => {
+    const worktreePath = await makeTempWorktree({ test: "node test.cjs" });
+    await fs.writeFile(
+      path.join(worktreePath, "test.cjs"),
+      "if (process.env.CI !== 'true') { console.log('watching'); setInterval(() => {}, 1000); }"
+    );
+    const runCommand = vi.fn(async (spec, options) => {
+      if (commandLabel(spec) === "npm run test") {
+        // Catch missing gate env even when this regression itself runs in CI.
+        return runRealCommand(spec, {
+          ...options,
+          timeout: 2000,
+          env: { CI: "false", ...options.env, PATH: process.env.PATH },
+        });
+      }
+      return makeCommandResult(spec, options.cwd);
+    });
+    const failure = await runMergeQualityGates(
+      {
+        projectId: "proj-ci",
+        repoPath: worktreePath,
+        worktreePath,
+        taskId: "os-ci",
+        branchName: "opensprint/os-ci",
+        baseBranch: "main",
+      },
+      { runCommand }
+    );
+    expect(failure).toBeNull();
+  });
+
+  it.each([
+    [
+      "validation_resource_busy",
+      "Command timed out: npm run build",
+      "Waiting for validation in /another/checkout (PID 123); running suites remain uninterrupted.",
+    ],
+    [
+      "checkout_reserved",
+      "Command failed: npm run build",
+      "Checkout reserved by task another-owner. Use its task ID or another worktree.",
+    ],
+  ])(
+    "reports %s without reinstalling dependencies or retrying the gate",
+    async (classificationReason, message, stderr) => {
+      const worktreePath = await makeTempWorktree({ build: "node build.js" });
+      const runCommand = vi.fn(async (spec, options) => {
+        if (commandLabel(spec) === "npm run build") {
+          throw makeCommandFailure(spec, options.cwd, { message, stderr });
+        }
+        return makeCommandResult(spec, options.cwd);
+      });
+      const failure = await runMergeQualityGates(
+        {
+          projectId: "proj-busy",
+          repoPath: worktreePath,
+          worktreePath,
+          taskId: "os-busy",
+          branchName: "opensprint/os-busy",
+          baseBranch: "main",
+        },
+        { runCommand }
+      );
+      expect(failure).toMatchObject({
+        category: "environment_setup",
+        classificationReason,
+        autoRepairAttempted: false,
+      });
+      expect(getExecutedCommands(runCommand)).toEqual(["npm run build"]);
+    }
+  );
+
+  it("repairs a missing dependency manifest even when its require stack has file locations", async () => {
+    const worktreePath = await makeTempWorktree({ build: "node build.js" });
+    let builds = 0;
+    const runCommand = vi.fn(async (spec, options) => {
+      if (commandLabel(spec) === "npm run build" && builds++ === 0) {
+        throw makeCommandFailure(spec, options.cwd, {
+          stderr: `Error: Cannot find module '../package.json'\nRequire stack:\n- ${worktreePath}/node_modules/react-scripts/config/paths.js\n    at Object.<anonymous> (${worktreePath}/node_modules/react-scripts/config/paths.js:135:24)`,
+        });
+      }
+      return makeCommandResult(spec, options.cwd);
+    });
+    const failure = await runMergeQualityGates(
+      {
+        projectId: "proj-manifest",
+        repoPath: worktreePath,
+        worktreePath,
+        taskId: "os-manifest",
+        branchName: "opensprint/os-manifest",
+        baseBranch: "main",
+      },
+      { runCommand, symlinkNodeModules: vi.fn(async () => undefined) }
+    );
+    expect(failure).toBeNull();
+    expect(getExecutedCommands(runCommand)).toContain("npm ci");
+    expect(builds).toBe(2);
+  });
+
   it("injects deterministic merge-gate env for test command runs", async () => {
     const worktreePath = await makeTempWorktree({ test: "vitest run" });
     const runCommand = vi.fn(
@@ -1104,7 +1204,7 @@ src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Hea
     );
     expect(testCall).toBeDefined();
     const env = (testCall?.[1] as { env?: Record<string, string> | undefined })?.env;
-    expect(env).toBeUndefined();
+    expect(env).toEqual({ CI: "true" });
   });
 
   describe("merged_candidate: missing node_modules precheck regression", () => {

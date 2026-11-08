@@ -35,6 +35,12 @@ From the repo root, run:
 
 CI runs `npm run lint`; use `npm run format:check` to check Prettier locally as well. Keep changed files formatted before submitting.
 
+The orchestrator resolves `node`, `npm`, and `npx` against the project's `package.json` `engines.node`
+requirement, including when running from a workspace package. It searches PATH and installed NVM and
+Homebrew versions, then keeps child commands on the selected runtime. If no compatible version is
+installed, checks fail with an `EBADENGINE` environment error; install the required Node version before
+retrying. This also applies to the Mac app, whose GUI environment may otherwise select a newer Node.
+
 **Coverage and E2E:** The test job in `.github/workflows/merge-gate.yml` selects affected workspaces and runs `npm run test:coverage` for shared, backend, frontend, and Electron as applicable. The frontend suite includes E2E tests (`*.e2e.test.tsx`); each workspace coverage step is bounded by a 20-minute timeout. The SPEC coverage targets and passing E2E tests are enforced in CI; see `SPEC.md` for thresholds and details.
 
 Before opening or updating a PR, run both `npm run verify:merge-gates` and `npm run test:coverage:affected` from the repository root. The first runs build, lint, and ordinary tests; the second exercises CI's Git-based workspace selection and coverage thresholds. Inspect the selection with `node scripts/affected-workspaces.mjs --coverage-only --json`. Do not substitute `--all` for this check: it bypasses Git comparison and cannot detect checkout/history problems.

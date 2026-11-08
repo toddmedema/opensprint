@@ -19,6 +19,33 @@ export interface MergeGateVerificationArtifact {
   qualityGateProfile: MergeQualityGateProfile;
   validationWorkspace: "task_worktree" | "merged_candidate";
   passedAt: string;
+  executionContextHash?: string;
+}
+
+/** No artifact may bypass gates when workspace/runtime/profile evidence is unavailable. */
+async function executionStamp(
+  wtPath: string,
+  profile?: ToolchainProfile | null,
+  baseBranch = "HEAD",
+  projectId?: string
+): Promise<string | undefined> {
+  try {
+    const { captureExecutionProfile } = await import("./project-execution-profile.service.js");
+    const captured = await captureExecutionProfile(wtPath, profile ?? undefined, baseBranch);
+    const { localRecoveryStore } = await import("./local-recovery.service.js");
+    const learned = projectId
+      ? await localRecoveryStore.executionProfile(
+          projectId,
+          captured.recipeHash ?? captured.contextHash
+        )
+      : undefined;
+    return createHash("sha256")
+      .update(captured.contextHash)
+      .update(JSON.stringify(learned?.runtimeBindings ?? []))
+      .digest("hex");
+  } catch {
+    return undefined;
+  }
 }
 
 export interface BranchManagerLikeForVerification {
@@ -29,9 +56,9 @@ export function computeMergeGateCommandsFingerprint(
   toolchainProfile?: ToolchainProfile | null,
   qualityGateProfile: MergeQualityGateProfile = "deterministic"
 ): string {
-  const commands = [...resolveToolchainProfile(toolchainProfile).mergeQualityGateCommands];
+  const contract = resolveToolchainProfile(toolchainProfile);
   return createHash("sha256")
-    .update(JSON.stringify({ commands, qualityGateProfile }))
+    .update(JSON.stringify({ contract, qualityGateProfile }))
     .digest("hex")
     .slice(0, 40);
 }
@@ -64,6 +91,7 @@ export function artifactMatchesToolchainFingerprint(
 export async function isTaskWorktreeMergeGateArtifactCurrent(
   bm: BranchManagerLikeForVerification,
   params: {
+    projectId?: string;
     repoPath: string;
     wtPath: string;
     baseBranch: string;
@@ -72,6 +100,12 @@ export async function isTaskWorktreeMergeGateArtifactCurrent(
     qualityGateProfile?: MergeQualityGateProfile;
   }
 ): Promise<boolean> {
+  const stamp = await executionStamp(
+    params.wtPath,
+    params.toolchainProfile,
+    params.baseBranch,
+    params.projectId
+  );
   const head = await bm.getGitRev(params.wtPath, "HEAD");
   const baseTip = await resolveRecordedBaseBranchTip(
     bm,
@@ -85,6 +119,8 @@ export async function isTaskWorktreeMergeGateArtifactCurrent(
     return false;
   }
   return (
+    !!stamp &&
+    stamp === params.artifact.executionContextHash &&
     head === params.artifact.taskBranchHead &&
     baseTip === params.artifact.baseBranchTip &&
     params.artifact.validationWorkspace === "task_worktree" &&
@@ -95,6 +131,7 @@ export async function isTaskWorktreeMergeGateArtifactCurrent(
 export async function buildMergeGateVerificationArtifact(
   bm: BranchManagerLikeForVerification,
   params: {
+    projectId?: string;
     repoPath: string;
     wtPath: string;
     baseBranch: string;
@@ -103,6 +140,12 @@ export async function buildMergeGateVerificationArtifact(
     validationWorkspace: "task_worktree" | "merged_candidate";
   }
 ): Promise<MergeGateVerificationArtifact> {
+  const stamp = await executionStamp(
+    params.wtPath,
+    params.toolchainProfile,
+    params.baseBranch,
+    params.projectId
+  );
   const head = await bm.getGitRev(params.wtPath, "HEAD");
   const baseTip = await resolveRecordedBaseBranchTip(
     bm,
@@ -115,6 +158,7 @@ export async function buildMergeGateVerificationArtifact(
   }
   const qualityGateProfile = params.qualityGateProfile ?? "deterministic";
   return {
+    executionContextHash: stamp,
     taskBranchHead: head,
     baseBranchTip: baseTip,
     commandsFingerprint: computeMergeGateCommandsFingerprint(
@@ -140,6 +184,12 @@ export async function runMergeQualityGatesWithArtifact(
   artifact: MergeGateVerificationArtifact | null;
 }> {
   const qualityGateProfile = options.qualityGateProfile ?? "deterministic";
+  const before = await executionStamp(
+    options.worktreePath,
+    options.toolchainProfile,
+    options.baseBranch,
+    options.projectId
+  );
   const failure = await runMergeQualityGates({
     ...options,
     qualityGateProfile,
@@ -148,6 +198,7 @@ export async function runMergeQualityGatesWithArtifact(
   const validationWorkspace: "task_worktree" | "merged_candidate" =
     options.validationWorkspace === "merged_candidate" ? "merged_candidate" : "task_worktree";
   const artifact = await buildMergeGateVerificationArtifact(bm, {
+    projectId: options.projectId,
     repoPath: options.repoPath,
     wtPath: options.worktreePath,
     baseBranch: options.baseBranch,
@@ -155,5 +206,8 @@ export async function runMergeQualityGatesWithArtifact(
     qualityGateProfile,
     validationWorkspace,
   });
-  return { failure: null, artifact };
+  return {
+    failure: null,
+    artifact: before && artifact.executionContextHash === before ? artifact : null,
+  };
 }

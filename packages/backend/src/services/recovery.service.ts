@@ -79,6 +79,14 @@ export interface RecoveryResult {
 }
 
 export interface RecoveryHost {
+  resumeRetainedLocalValidation?(
+    projectId: string,
+    repoPath: string,
+    taskId: string
+  ): Promise<boolean>;
+  getRetainedLocalRecoveryTasks?(
+    projectId: string
+  ): Promise<Array<{ taskId: string; checkpoint: { worktreePath: string; branchName: string } }>>;
   getSlottedTaskIds(projectId: string): string[];
   getActiveAgentIds(projectId: string): string[];
   /** Worktree keys held by active slots (task.id or epic_<epicId>). */
@@ -217,6 +225,19 @@ export class RecoveryService {
       log.warn("Governance outbox delivery failed during recovery", { projectId, err });
     }
 
+    const retainedRecovery = (await host.getRetainedLocalRecoveryTasks?.(projectId)) ?? [];
+    // GUPP may resume a terminal assignment; every destructive path must retain it.
+    for (const retained of retainedRecovery) {
+      await host.resumeRetainedLocalValidation?.(projectId, repoPath, retained.taskId);
+      excludeIds.add(retained.taskId);
+      excludeWorktreePaths.add(path.resolve(retained.checkpoint.worktreePath));
+      excludeWorktreeKeys.add(
+        retained.checkpoint.branchName.startsWith("opensprint/epic_")
+          ? retained.checkpoint.branchName.slice("opensprint/".length)
+          : retained.taskId
+      );
+    }
+
     // 1. GUPP crash recovery (startup only) — now receives exclude sets
     if (
       opts.includeGupp &&
@@ -240,6 +261,7 @@ export class RecoveryService {
       guppResult.worktreePaths.forEach((p) => excludeWorktreePaths.add(p));
     }
 
+    retainedRecovery.forEach((r) => excludeIds.add(r.taskId));
     // Recent assignments protect destructive cleanup, but must not hide orphaned
     // runs from the safe startup reattachment and terminal-result inspection above.
     await this.augmentExclusionsFromRecentAssignments(

@@ -15,7 +15,10 @@ import {
 } from "../utils/error-utils.js";
 import { isOpenAIResponsesModel } from "../utils/openai-models.js";
 import { assertAnthropicCompletion } from "../utils/provider-response.js";
-import { acquireGlobalAgentSlot } from "./agent-global-concurrency.service.js";
+import {
+  acquireGlobalAgentSlot,
+  acquireRecoveryAgentSlot,
+} from "./agent-global-concurrency.service.js";
 import { activeAgentsService } from "./active-agents.service.js";
 import {
   getNextKey,
@@ -129,8 +132,23 @@ export class AgentService {
    * Claude: uses @anthropic-ai/sdk API. Cursor/custom: delegates to AgentClient (CLI).
    */
   async invokePlanningAgent(options: InvokePlanningAgentOptions): Promise<PlanningAgentResponse> {
-    const releaseGlobalSlot = await acquireGlobalAgentSlot(options.projectId, options.abortSignal);
+    const admissionStarted = Date.now();
+    const releaseGlobalSlot = options.localRecovery
+      ? await acquireRecoveryAgentSlot(options.abortSignal)
+      : await acquireGlobalAgentSlot(options.projectId, options.abortSignal);
     try {
+      options.abortSignal?.throwIfAborted();
+      if (options.localRecovery)
+        options = {
+          ...options,
+          config: {
+            ...options.config,
+            timeoutMs: Math.max(
+              1,
+              (options.config.timeoutMs ?? 60000) - (Date.now() - admissionStarted)
+            ),
+          },
+        };
       const { tracking } = options;
       const startedAt = new Date().toISOString();
       let outcome: "success" | "failed" = "failed";
@@ -215,6 +233,7 @@ export class AgentService {
         onChunk,
         projectId: options.projectId,
         timeoutMs: config.timeoutMs,
+        abortSignal: options.abortSignal,
       });
       const content = response?.content ?? "";
       return { content };
@@ -692,7 +711,9 @@ export class AgentService {
 
       const client = new Anthropic({
         apiKey: key,
-        ...(options.governanceBounded || options.role === "judge" ? { maxRetries: 0 } : {}),
+        ...(options.localRecovery || options.governanceBounded || options.role === "judge"
+          ? { maxRetries: 0 }
+          : {}),
       });
 
       try {
@@ -734,7 +755,12 @@ export class AgentService {
         await clearLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
         return { content, cacheMetrics };
       } catch (error: unknown) {
-        if (options.governanceBounded || options.role === "judge" || options.abortSignal?.aborted)
+        if (
+          options.localRecovery ||
+          options.governanceBounded ||
+          options.role === "judge" ||
+          options.abortSignal?.aborted
+        )
           throw error;
         lastError = error;
         if (isLimitError(error)) {
@@ -859,7 +885,9 @@ export class AgentService {
 
       const client = new OpenAI({
         apiKey: key,
-        ...(options.governanceBounded || options.role === "judge" ? { maxRetries: 0 } : {}),
+        ...(options.localRecovery || options.governanceBounded || options.role === "judge"
+          ? { maxRetries: 0 }
+          : {}),
       });
 
       try {
@@ -1006,7 +1034,12 @@ export class AgentService {
         await clearLimitHit(projectId, "OPENAI_API_KEY", keyId, source);
         return { content, responseId, cacheMetrics };
       } catch (error: unknown) {
-        if (options.governanceBounded || options.role === "judge" || options.abortSignal?.aborted)
+        if (
+          options.localRecovery ||
+          options.governanceBounded ||
+          options.role === "judge" ||
+          options.abortSignal?.aborted
+        )
           throw error;
         lastError = error;
         if (isLimitError(error)) {

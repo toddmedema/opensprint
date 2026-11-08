@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ProjectSettings } from "@opensprint/shared";
 import {
   acquireGlobalAgentSlot,
+  acquireRecoveryAgentSlot,
   resetGlobalAgentConcurrencyForTests,
   updateGlobalAgentConcurrencyLimit,
   trackExistingGlobalAgentSlot,
@@ -47,6 +48,41 @@ describe("agent-global-concurrency.service", () => {
 
   afterEach(() => {
     resetGlobalAgentConcurrencyForTests();
+  });
+
+  it("admits one bounded recovery while coding is saturated and cancels queued diagnoses", async () => {
+    mockGetSettings.mockResolvedValue(minimalSettings({ maxTotalConcurrentAgents: 1 }));
+    const coding = await acquireGlobalAgentSlot("saturated");
+    let codingAdmitted = false,
+      nextRecoveryAdmitted = false;
+    const queuedCoding = acquireGlobalAgentSlot("saturated").then((release) => {
+      codingAdmitted = true;
+      release();
+    });
+    let recovery: (() => void) | undefined;
+    try {
+      recovery = await acquireRecoveryAgentSlot(AbortSignal.timeout(1000));
+      expect(codingAdmitted).toBe(false);
+      const cancel = new AbortController();
+      const rejected = expect(acquireRecoveryAgentSlot(cancel.signal)).rejects.toThrow();
+      const next = acquireRecoveryAgentSlot(AbortSignal.timeout(1000)).then((release) => {
+        nextRecoveryAdmitted = true;
+        release();
+      });
+      await Promise.resolve();
+      expect(nextRecoveryAdmitted).toBe(false);
+      cancel.abort();
+      await rejected;
+      recovery();
+      recovery = undefined;
+      await next;
+      expect(nextRecoveryAdmitted).toBe(true);
+      expect(codingAdmitted).toBe(false);
+    } finally {
+      recovery?.();
+      coding();
+      await queuedCoding;
+    }
   });
 
   it("returns no-op release when maxTotalConcurrentAgents is unset", async () => {

@@ -30,6 +30,8 @@ export interface AgentTrackingInfo {
 
 /** Options for invokePlanningAgent */
 export interface InvokePlanningAgentOptions {
+  /** Server-owned bounded diagnostic admission, independent of a saturated coding queue. */
+  localRecovery?: boolean;
   /** Project ID (required for Claude API key resolution and retry) */
   projectId: string;
   /** Agent role for agent log (required so every planning run is recorded) */

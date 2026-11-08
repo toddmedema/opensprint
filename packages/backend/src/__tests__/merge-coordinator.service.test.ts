@@ -438,7 +438,7 @@ describe("MergeCoordinatorService", () => {
     });
   });
 
-  it("skips task_worktree merge gates when stored artifact matches HEAD and base tip", async () => {
+  it("reruns task_worktree gates for a legacy artifact without execution evidence", async () => {
     mockHost.runMergeQualityGates = vi.fn().mockResolvedValue(null);
     const slot = makeSlot();
     slot.phaseResult.mergeGateArtifactTaskWorktree = {
@@ -456,7 +456,7 @@ describe("MergeCoordinatorService", () => {
     const taskWorktreeGateCalls = mockHost.runMergeQualityGates!.mock.calls.filter(
       ([opts]) => opts.validationWorkspace === "task_worktree" && opts.taskId === taskId
     );
-    expect(taskWorktreeGateCalls).toHaveLength(0);
+    expect(taskWorktreeGateCalls).toHaveLength(1);
   });
 
   it("skips removeTaskWorktree when gitWorkingMode is branches", async () => {

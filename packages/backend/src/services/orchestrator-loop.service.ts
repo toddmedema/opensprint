@@ -24,6 +24,7 @@ import { getComplexityForAgent } from "./plan-complexity.js";
 import { WorktreeBranchInUseError } from "./branch-manager.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { planPullRequestReconciler } from "./plan-pull-request-reconcile.service.js";
+import { isLocalRecoveryCapacityReleased } from "./local-recovery-capacity.js";
 
 const log = createLogger("orchestrator-loop");
 
@@ -64,6 +65,12 @@ export interface SchedulerResult {
 }
 
 export interface OrchestratorLoopHost {
+  getRetainedLocalRecoveryTasks?(projectId: string): Promise<
+    Array<{
+      taskId: string;
+      checkpoint: { worktreePath: string; branchName: string; worktreeKey?: string };
+    }>
+  >;
   getState(projectId: string): LoopState;
   getStatus(projectId: string): Promise<OrchestratorStatus>;
   dispatchTask(
@@ -303,7 +310,9 @@ export class OrchestratorLoopService {
         return;
       }
 
-      const slotsAvailable = maxSlots - state.slots.size;
+      const slotsAvailable =
+        maxSlots -
+        [...state.slots.values()].filter((s) => !isLocalRecoveryCapacityReleased(s)).length;
       const dispatchBlockers: NonNullable<OrchestratorStatus["dispatchBlockers"]> = {
         slotsFull: 0,
         providerBackoff: 0,
@@ -379,11 +388,22 @@ export class OrchestratorLoopService {
 
       const mergeStrategy = getEffectiveMergeStrategy(settings);
       const worktreeKeysPlanned = this.collectActiveWorktreeKeys(state);
+      const retained = (await this.host.getRetainedLocalRecoveryTasks?.(projectId)) ?? [];
+      for (const recovery of retained)
+        worktreeKeysPlanned.add(
+          recovery.checkpoint.worktreeKey ??
+            (recovery.checkpoint.branchName.startsWith("opensprint/epic_")
+              ? recovery.checkpoint.branchName.slice("opensprint/".length)
+              : recovery.taskId)
+        );
       const epicAwareDispatch: SchedulerResult[] = [];
       let skippedForWorktreeConflict = 0;
       for (const st of dispatchableTasks) {
         const key = this.dispatchWorktreeKey(st.task, mergeStrategy, allIssues);
-        if (worktreeKeysPlanned.has(key)) {
+        if (
+          worktreeKeysPlanned.has(key) ||
+          (settings.gitWorkingMode === "branches" && retained.length > 0)
+        ) {
           skippedForWorktreeConflict += 1;
           log.debug("Skipping task: shared epic/worktree branch already active", {
             projectId,

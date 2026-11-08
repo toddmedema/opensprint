@@ -74,6 +74,8 @@ import {
   type MergeQualityGateRunOptions,
 } from "./merge-coordinator.service.js";
 import { runMergeQualityGates as runMergeQualityGatesShared } from "./merge-quality-gate-runner.js";
+import { localRecoveryController, diagnoseLocalRecovery } from "./local-recovery.service.js";
+import { executionAuthorityHash } from "./project-execution-profile.service.js";
 import { runMergeQualityGatesWithArtifact } from "./merge-verification.service.js";
 import {
   TaskPhaseCoordinator,
@@ -201,6 +203,7 @@ interface ReviewAgentSlotState {
 
 /** Per-task agent slot. Encapsulates all state for one active agent. */
 export interface AgentSlot {
+  localRecoveryWaiting?: boolean;
   taskId: string;
   taskTitle: string | null;
   branchName: string;
@@ -266,6 +269,22 @@ type TransitionTarget =
  * Supports concurrent coder agents via slot-based state model.
  */
 export class OrchestratorService {
+  private localRecovery = localRecoveryController;
+  private recoveryInjected = false;
+  private mergeGateRunner = runMergeQualityGatesShared;
+  /** Internal dependency injection for integration verification and composition. */
+  setLocalRecoveryController(
+    controller: import("./local-recovery-controller.js").LocalRecoveryController
+  ): void {
+    this.localRecovery = controller;
+    this.recoveryInjected = true;
+  }
+  setMergeQualityGateRunner(runner: typeof runMergeQualityGatesShared): void {
+    this.mergeGateRunner = runner;
+  }
+  getLocalRecoveryStore() {
+    return this.localRecovery.store;
+  }
   private state = new Map<string, OrchestratorState>();
   private readonly worktreeCheckoutUsabilityCache = new WorktreeCheckoutUsabilityCache(
     DEFAULT_WORKTREE_CHECKOUT_USABILITY_CACHE_TTL_MS
@@ -1076,11 +1095,16 @@ export class OrchestratorService {
   async stopTaskAndFreeSlot(projectId: string, taskId: string): Promise<void> {
     const state = this.getState(projectId);
     const slot = state.slots.get(taskId);
-    if (!slot) return;
+    // Invalidate the continuation before cancellation awaits process receipts.
+    // A finishing validator must not reopen a task the user just closed.
+    if (slot) slot.agent.cancelled = true;
+    await this.localRecovery.cancelTask(projectId, taskId);
+    if (!slot || state.slots.get(taskId) !== slot) return;
 
     log.info("Stopping agent for user-marked-done task", { projectId, taskId });
     try {
       const repoPath = await this.projectService.getRepoPath(projectId);
+      if (state.slots.get(taskId) !== slot) return;
       await this.cleanupAndRemoveSlot(projectId, repoPath, state, taskId, "user_stopped");
     } catch (err) {
       log.warn("Cleanup on stopTaskAndFreeSlot failed, still freeing slot", {
@@ -1088,6 +1112,7 @@ export class OrchestratorService {
         taskId,
         err,
       });
+      if (state.slots.get(taskId) !== slot) return;
       this.removeSlot(state, taskId);
       broadcastToProject(projectId, this.buildExecuteStatusPayload(projectId, state));
     }
@@ -1108,6 +1133,9 @@ export class OrchestratorService {
     state.globalTimers.clearAll();
 
     for (const slot of state.slots.values()) {
+      void this.localRecovery
+        .cancelTask(projectId, slot.taskId)
+        .catch((err) => log.warn("Recovery cancellation failed", { err }));
       slot.timers.clearAll();
       const preserveAgents = process.env.OPENSPRINT_PRESERVE_AGENTS === "1";
       if (!preserveAgents) this.killProcessIfActive(slot.agent);
@@ -2319,7 +2347,8 @@ export class OrchestratorService {
     repoPath: string,
     task: StoredTask,
     branchName: string,
-    exitCode: number | null
+    exitCode: number | null,
+    resumingValidation = false
   ): Promise<void> {
     const state = this.getState(projectId);
     const slot = state.slots.get(task.id);
@@ -2475,72 +2504,73 @@ export class OrchestratorService {
       );
       slot.phaseResult.codingSummary = result.summary ?? "";
       slot.phaseResult.governanceAppeals = result.appeals;
-      agentIdentityService
-        .recordAttempt(repoPath, {
-          taskId: task.id,
-          agentId: buildAgentAttemptId(agentConfig, "coder"),
-          role: "coder",
-          model: agentConfig.model ?? "unknown",
-          attempt: slot.attempt,
-          startedAt: slot.agent.startedAt ?? new Date().toISOString(),
-          completedAt: new Date().toISOString(),
-          outcome: "success",
-          durationMs: Math.max(
-            0,
-            Date.now() - new Date(slot.agent.startedAt ?? Date.now()).getTime()
-          ),
-        })
-        .catch((err) => log.warn("Failed to record coder run for Agent Log (success)", { err }));
-
-      const diffIsEmpty = !slot.phaseResult.codingDiff.trim();
-      if (diffIsEmpty) {
-        const prev = ((task as Record<string, unknown>).consecutiveEmptyDiffs as number) || 0;
-        const consecutiveEmptyDiffs = prev + 1;
-        if (consecutiveEmptyDiffs >= MAX_CONSECUTIVE_EMPTY_DIFFS) {
-          log.warn("Empty-diff circuit breaker: blocking task after consecutive empty diffs", {
+      if (!resumingValidation) {
+        agentIdentityService
+          .recordAttempt(repoPath, {
             taskId: task.id,
-            consecutiveEmptyDiffs,
-          });
-          fireAndForget(
-            eventLogService.append(repoPath, {
-              timestamp: new Date().toISOString(),
-              projectId,
+            agentId: buildAgentAttemptId(agentConfig, "coder"),
+            role: "coder",
+            model: agentConfig.model ?? "unknown",
+            attempt: slot.attempt,
+            startedAt: slot.agent.startedAt ?? new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+            outcome: "success",
+            durationMs: Math.max(
+              0,
+              Date.now() - new Date(slot.agent.startedAt ?? Date.now()).getTime()
+            ),
+          })
+          .catch((err) => log.warn("Failed to record coder run for Agent Log (success)", { err }));
+
+        const diffIsEmpty = !slot.phaseResult.codingDiff.trim();
+        if (diffIsEmpty) {
+          const prev = ((task as Record<string, unknown>).consecutiveEmptyDiffs as number) || 0;
+          const consecutiveEmptyDiffs = prev + 1;
+          if (consecutiveEmptyDiffs >= MAX_CONSECUTIVE_EMPTY_DIFFS) {
+            log.warn("Empty-diff circuit breaker: blocking task after consecutive empty diffs", {
               taskId: task.id,
-              event: "circuit_breaker.empty_diff_blocked",
-              data: {
+              consecutiveEmptyDiffs,
+            });
+            fireAndForget(
+              eventLogService.append(repoPath, {
+                timestamp: new Date().toISOString(),
                 projectId,
-                attempt: slot.attempt,
-                branchName,
-                consecutiveEmptyDiffs,
-                threshold: MAX_CONSECUTIVE_EMPTY_DIFFS,
-              },
-            }),
-            "orchestrator:review-result-event-log"
-          );
-          await this.failureHandler.handleTaskFailure(
-            projectId,
-            repoPath,
-            task,
-            branchName,
-            `Agent reported success but produced no code changes on ${consecutiveEmptyDiffs} consecutive attempts. ` +
-              "The task likely lacks sufficient context for the agent to act on. Blocking for investigation.",
-            null,
-            "coding_failure"
-          );
-          return;
-        }
-        await this.taskStore.update(projectId, task.id, {
-          extra: { consecutiveEmptyDiffs },
-        });
-      } else {
-        const prev = ((task as Record<string, unknown>).consecutiveEmptyDiffs as number) || 0;
-        if (prev > 0) {
+                taskId: task.id,
+                event: "circuit_breaker.empty_diff_blocked",
+                data: {
+                  projectId,
+                  attempt: slot.attempt,
+                  branchName,
+                  consecutiveEmptyDiffs,
+                  threshold: MAX_CONSECUTIVE_EMPTY_DIFFS,
+                },
+              }),
+              "orchestrator:review-result-event-log"
+            );
+            await this.failureHandler.handleTaskFailure(
+              projectId,
+              repoPath,
+              task,
+              branchName,
+              `Agent reported success but produced no code changes on ${consecutiveEmptyDiffs} consecutive attempts. ` +
+                "The task likely lacks sufficient context for the agent to act on. Blocking for investigation.",
+              null,
+              "coding_failure"
+            );
+            return;
+          }
           await this.taskStore.update(projectId, task.id, {
-            extra: { consecutiveEmptyDiffs: 0 },
+            extra: { consecutiveEmptyDiffs },
           });
+        } else {
+          const prev = ((task as Record<string, unknown>).consecutiveEmptyDiffs as number) || 0;
+          if (prev > 0) {
+            await this.taskStore.update(projectId, task.id, {
+              extra: { consecutiveEmptyDiffs: 0 },
+            });
+          }
         }
       }
-
       const okRebase = await this.ensureTaskWorktreeRebasedForGates(
         projectId,
         repoPath,
@@ -2600,6 +2630,7 @@ export class OrchestratorService {
               toolchainProfile: settings.toolchainProfile,
             }
           );
+        if (slot.agent.cancelled || state.slots.get(task.id) !== slot) return;
         if (earlyGateFailure) {
           const detail = this.applyQualityGateFailure(slot.phaseResult, earlyGateFailure, wtPath);
           await this.failureHandler.handleTaskFailure(
@@ -2675,6 +2706,7 @@ export class OrchestratorService {
           settings.toolchainProfile,
           slot
         );
+        if (slot.agent.cancelled || state.slots.get(task.id) !== slot) return;
         if (qualityGateFailure) {
           const detail = this.applyQualityGateFailure(slot.phaseResult, qualityGateFailure, wtPath);
           await this.failureHandler.handleTaskFailure(
@@ -3356,6 +3388,10 @@ export class OrchestratorService {
     }
   }
 
+  suspendLocalValidation(projectId: string, taskId: string): void {
+    this.removeSlot(this.getState(projectId), taskId);
+  }
+
   /** MergeCoordinatorHost: run merger agent to resolve conflicts; returns true if agent exited 0 */
   async runMergerAgentAndWait(options: {
     projectId: string;
@@ -3375,9 +3411,198 @@ export class OrchestratorService {
   async runMergeQualityGates(
     options: MergeQualityGateRunOptions
   ): Promise<MergeQualityGateFailure | null> {
-    return runMergeQualityGatesShared(options, {
-      symlinkNodeModules: this.branchManager.symlinkNodeModules.bind(this.branchManager),
+    if (process.env.NODE_ENV === "test" && !this.recoveryInjected)
+      return this.mergeGateRunner(options);
+    const slot = this.getState(options.projectId).slots.get(options.taskId);
+    const task = await this.taskStore.show(options.projectId, options.taskId).catch(() => null);
+    const settings = await this.projectService.getSettings(options.projectId);
+    options = {
+      ...options,
+      toolchainProfile: options.toolchainProfile ?? settings.toolchainProfile,
+    };
+    const assignment = slot
+      ? await this.readAssignmentForRun(options.worktreePath, options.taskId)
+      : null;
+    const attemptKey = `${task?.created_at ?? "legacy"}:${slot?.attempt ?? 0}`;
+    const expectedAuthorityHash = slot
+      ? await this.localRecovery.store.authority(options.projectId, options.taskId, attemptKey)
+      : undefined;
+    return this.localRecovery.run({
+      ...options,
+      expectedAuthorityHash,
+      requestId: assignment?.invocationId ?? slot?.attemptId,
+      checkpoint: slot
+        ? {
+            phase: slot.phase,
+            validationBranchName: options.validationBranchName,
+            phaseResult: slot.phaseResult,
+            attempt: slot.attempt,
+            worktreePath: slot.worktreePath ?? options.repoPath,
+            worktreeKey: slot.worktreeKey ?? slot.taskId,
+            head:
+              (await this.branchManager.getGitRev(slot.worktreePath ?? options.repoPath, "HEAD")) ??
+              "",
+            continuation:
+              options.validationWorkspace === "merged_candidate"
+                ? "merge_validation"
+                : slot.phase === "coding"
+                  ? "post_coding_validation"
+                  : "review_validation",
+          }
+        : undefined,
+      isCurrent: async () => {
+        if (slot?.agent.cancelled) return false;
+        if (slot && this.getState(options.projectId).slots.get(options.taskId) !== slot)
+          return false;
+        if (task) {
+          const latest = await this.taskStore
+            .show(options.projectId, options.taskId)
+            .catch(() => null);
+          if (!latest || latest.status !== "in_progress") return false;
+        }
+        return true;
+      },
+      onWaiting: (waiting) => {
+        if (slot) {
+          slot.localRecoveryWaiting =
+            waiting && (slot.worktreePath ?? options.repoPath) !== options.repoPath;
+          if (waiting) this.nudge(options.projectId);
+        }
+      },
+      diagnose: (failure, profile, signal) =>
+        diagnoseLocalRecovery(options.projectId, settings, failure, profile, signal),
+      validate: (runCommand) =>
+        this.mergeGateRunner({ ...options, skipEnvironmentRepair: true }, { runCommand }),
     });
+  }
+
+  async pinValidationAuthority(
+    projectId: string,
+    task: StoredTask,
+    attempt: number,
+    profile?: import("@opensprint/shared").ToolchainProfile
+  ): Promise<void> {
+    await this.localRecovery.store.pinAuthority(
+      projectId,
+      task.id,
+      `${task.created_at ?? "legacy"}:${attempt}`,
+      executionAuthorityHash(profile)
+    );
+  }
+
+  async getRetainedLocalRecoveryTasks(projectId: string) {
+    return this.localRecovery.store.retained(projectId);
+  }
+
+  /** Restart resumes a persisted validation continuation; it never launches another coder. */
+  async resumeRetainedLocalValidation(
+    projectId: string,
+    repoPath: string,
+    taskId: string
+  ): Promise<boolean> {
+    if (this.hasActiveTask(projectId, taskId)) return true;
+    const checkpoint = await this.localRecovery.store.checkpointForTask(projectId, taskId);
+    if (
+      !checkpoint?.phaseResult ||
+      !checkpoint.attempt ||
+      !(await this.localRecovery.store.canResume(
+        projectId,
+        checkpoint.validationWorkspacePath ?? checkpoint.worktreePath
+      ))
+    )
+      return false;
+    const task = await this.taskStore.show(projectId, taskId).catch(() => null);
+    if (!task || task.status !== "in_progress") return false;
+    const assignment = await this.readAssignmentForRun(checkpoint.worktreePath, taskId);
+    if (
+      !assignment ||
+      (await fs.realpath(assignment.worktreePath).catch(() => null)) !==
+        (await fs.realpath(checkpoint.worktreePath).catch(() => null)) ||
+      assignment.branchName !== checkpoint.branchName ||
+      assignment.attempt !== checkpoint.attempt
+    )
+      return false;
+    if ((await this.branchManager.getGitRev(checkpoint.worktreePath, "HEAD")) !== checkpoint.head)
+      return false;
+    const state = this.getState(projectId);
+    if (state.slots.has(taskId)) return true;
+    const slot = this.createSlot(
+      taskId,
+      task.title ?? null,
+      checkpoint.branchName,
+      checkpoint.attempt,
+      task.assignee ?? undefined,
+      assignment.worktreeKey
+    );
+    slot.worktreePath = checkpoint.worktreePath;
+    slot.phase = checkpoint.phase ?? "coding";
+    slot.phaseResult = checkpoint.phaseResult;
+    slot.activeAgentConfig = assignment.agentConfig;
+    slot.agent.startedAt = assignment.createdAt;
+    state.slots.set(taskId, slot);
+    const resume = async () => {
+      if (checkpoint.continuation === "merge_validation") {
+        await this.mergeCoordinator.performMergeAndDone(
+          projectId,
+          repoPath,
+          task,
+          checkpoint.branchName,
+          checkpoint.validationWorkspacePath && checkpoint.validationBranchName
+            ? {
+                worktreePath: checkpoint.validationWorkspacePath,
+                branchName: checkpoint.validationBranchName,
+              }
+            : undefined
+        );
+      } else if (slot.phase === "coding") {
+        await this.handleCodingDone(projectId, repoPath, task, checkpoint.branchName, 0, true);
+      } else {
+        const settings = await this.projectService.getSettings(projectId);
+        const reviews = await this.localRecovery.store.reviews(
+          projectId,
+          taskId,
+          `${task.created_at ?? "legacy"}:${checkpoint.attempt}`
+        );
+        const changed = await this.branchManager.getChangedFiles(
+          repoPath,
+          checkpoint.branchName,
+          checkpoint.baseBranch
+        );
+        await this.startReviewCoordinatorAndTests(
+          projectId,
+          repoPath,
+          task,
+          checkpoint.branchName,
+          settings,
+          changed
+        );
+        const coordinator = slot.phaseCoordinator;
+        for (const review of reviews)
+          await coordinator?.setReviewOutcome(
+            review.outcome,
+            review.angle === "__general_review__" ? undefined : review.angle
+          );
+        const expected = settings.reviewAngles?.length
+          ? [
+              ...settings.reviewAngles,
+              ...(settings.includeGeneralReview ? ["__general_review__"] : []),
+            ]
+          : ["__general_review__"];
+        for (const angle of expected) {
+          if (!reviews.some((r) => r.angle === angle))
+            await this.executeReviewPhase(
+              projectId,
+              repoPath,
+              task,
+              checkpoint.branchName,
+              undefined,
+              (angle === "__general_review__" ? "general" : angle) as ReviewRetryTarget
+            );
+        }
+      }
+    };
+    fireAndForget(resume(), "orchestrator:resume-local-validation");
+    return true;
   }
 }
 

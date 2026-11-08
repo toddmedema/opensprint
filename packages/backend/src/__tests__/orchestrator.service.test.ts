@@ -17,6 +17,15 @@ import type { ReviewAgentResult } from "@opensprint/shared";
 import { OPEN_QUESTION_BLOCK_REASON } from "@opensprint/shared";
 import { buildOrchestratorTestStatusContent } from "../services/orchestrator-test-status.js";
 import type { AgentRunState } from "../services/agent-lifecycle.js";
+import { initAppDb } from "../db/app-db.js";
+import { LocalRecoveryController } from "../services/local-recovery-controller.js";
+import { LocalRecoveryStore } from "../services/local-recovery-store.js";
+import { executionAuthorityHash } from "../services/project-execution-profile.service.js";
+import { parseTaskLastExecutionSummary } from "../services/task-execution-summary.js";
+import { TaskExecutionDiagnosticsService } from "../services/task-execution-diagnostics.service.js";
+import { taskStore } from "../services/task-store.service.js";
+import { ProjectService } from "../services/project.service.js";
+import { runMergeQualityGates as runMergeQualityGatesShared } from "../services/merge-quality-gate-runner.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -819,6 +828,535 @@ describe("OrchestratorService (slot-based model)", () => {
     } catch {
       // ignore
     }
+  });
+
+  describe("local recovery orchestration integration", () => {
+    const head = "mockheadsha0000000000000000000000000001";
+    const toolchainProfile = {
+      dependencyStrategy: "none" as const,
+      mergeQualityGateCommands: ["project-verify"],
+    };
+    const phaseResult = () => ({
+      codingDiff: "diff --git a/src/feature.ts b/src/feature.ts\n+implemented feature\n",
+      codingSummary: "Coding completed before local validation failed",
+      testResults: null,
+      testOutput: "",
+      mergeGateArtifactTaskWorktree: null,
+    });
+
+    async function prepareRetainedWork(taskId: string) {
+      const task = { ...makeTask(taskId), status: "in_progress" };
+      const worktreePath = path.join(repoPath, `retained-${taskId}`);
+      const branchName = `opensprint/${taskId}`;
+      const active = path.join(worktreePath, ".opensprint", "active", taskId);
+      await fs.mkdir(active, { recursive: true });
+      await fs.writeFile(
+        path.join(worktreePath, "implemented.ts"),
+        "export const implemented = true;\n"
+      );
+      const assignment = {
+        taskId,
+        projectId,
+        phase: "review",
+        branchName,
+        worktreeKey: taskId,
+        worktreePath,
+        promptPath: path.join(active, "prompt.md"),
+        agentConfig: defaultSettings.simpleComplexityAgent,
+        attempt: 1,
+        createdAt: new Date().toISOString(),
+        invocationId: `${taskId}-invocation`,
+      };
+      await fs.writeFile(path.join(active, "assignment.json"), JSON.stringify(assignment));
+      mockGetSettings.mockResolvedValue({
+        ...defaultSettings,
+        agenticRepairEnabled: false,
+        toolchainProfile,
+      });
+      mockTaskStoreShow.mockResolvedValue(task);
+      mockCaptureBranchDiff.mockResolvedValue(phaseResult().codingDiff);
+      mockGetChangedFiles.mockResolvedValue(["src/feature.ts"]);
+      mockReadResult.mockResolvedValue({ status: "success", summary: phaseResult().codingSummary });
+      mockRunScopedTests.mockResolvedValue({
+        passed: 3,
+        failed: 0,
+        skipped: 0,
+        total: 3,
+        details: [],
+        rawOutput: "passed",
+        scope: "full",
+        executedCommand: "project-verify",
+      });
+      vi.spyOn(orchestrator, "nudge").mockImplementation(() => {});
+      return { task, worktreePath, branchName, assignment };
+    }
+
+    it("persists a parseable held summary and a blocked attempt event for retained work", async () => {
+      const fixtureMocks = [
+        mockTaskStoreShow,
+        mockTaskStoreUpdate,
+        mockGetProject,
+        mockGetProjectByRepoPath,
+        mockGetSettings,
+        mockCaptureBranchDiff,
+        mockGetChangedFiles,
+        mockReadResult,
+        mockRunScopedTests,
+      ];
+      const priorImplementations = fixtureMocks.map((mock) => mock.getMockImplementation());
+      const priorRunWrite = taskStore.runWrite;
+      const priorGetDb = taskStore.getDb;
+      const db = await initAppDb("sqlite://:memory:");
+      const { TaskStoreService: PersistentTaskStore } = await vi.importActual<
+        typeof import("../services/task-store.service.js")
+      >("../services/task-store.service.js");
+      const persistentTasks = new PersistentTaskStore(await db.getClient());
+      await persistentTasks.init();
+      const created = await persistentTasks.create(
+        projectId,
+        "Retain completed coding after environment failure"
+      );
+      const active = await persistentTasks.update(projectId, created.id, { status: "in_progress" });
+      const fixture = await prepareRetainedWork(created.id);
+      Object.assign(fixture.task, active);
+      mockTaskStoreShow.mockImplementation((pid, id) => persistentTasks.show(pid, id));
+      mockTaskStoreUpdate.mockImplementation((pid, id, update) =>
+        persistentTasks.update(pid, id, update)
+      );
+      taskStore.runWrite = (fn) => persistentTasks.runWrite(fn);
+      taskStore.getDb = () => persistentTasks.getDb();
+      mockGetProject.mockResolvedValue({ id: projectId, repoPath });
+      mockGetProjectByRepoPath.mockResolvedValue({ id: projectId, repoPath });
+      const store = new LocalRecoveryStore(() => db.getClient());
+      const controller = new LocalRecoveryController(store, {
+        capture: async () => ({
+          authorityHash: executionAuthorityHash(toolchainProfile),
+          contextHash: "retained-context",
+          head,
+          cwd: fixture.worktreePath,
+          inputs: [],
+        }),
+      });
+      orchestrator.setLocalRecoveryController(controller);
+      orchestrator.setMergeQualityGateRunner(
+        vi.fn().mockResolvedValue({
+          command: "project-verify",
+          reason: "Required runtime is unavailable",
+          output: "Fixture execution environment cannot run the configured check",
+          category: "environment_setup",
+          classificationReason: "node_npm_engine_mismatch",
+        })
+      );
+      const internal = orchestrator as unknown as {
+        getState(projectId: string): {
+          slots: Map<string, { worktreePath: string | null; agent: { startedAt: string } }>;
+        };
+        createSlot(
+          taskId: string,
+          title: string,
+          branch: string,
+          attempt: number
+        ): { worktreePath: string | null; agent: { startedAt: string } };
+        handleCodingDone(
+          projectId: string,
+          repoPath: string,
+          task: typeof fixture.task,
+          branch: string,
+          code: number
+        ): Promise<void>;
+      };
+      const slot = internal.createSlot(fixture.task.id, fixture.task.title, fixture.branchName, 1);
+      slot.worktreePath = fixture.worktreePath;
+      slot.agent.startedAt = new Date().toISOString();
+      internal.getState(projectId).slots.set(fixture.task.id, slot);
+      try {
+        await orchestrator.pinValidationAuthority(
+          projectId,
+          fixture.task as never,
+          1,
+          toolchainProfile
+        );
+        await internal.handleCodingDone(projectId, repoPath, fixture.task, fixture.branchName, 0);
+        const blocked = await persistentTasks.show(projectId, fixture.task.id);
+        expect(blocked.status).toBe("blocked");
+        const summary = parseTaskLastExecutionSummary(blocked.last_execution_summary);
+        expect(summary).toMatchObject({
+          attempt: 1,
+          outcome: "blocked",
+          phase: "coding",
+          failureType: "environment_setup",
+          blockReason: "Local validation recovery",
+          summary: expect.stringContaining("completed work retained"),
+        });
+        expect(Number.isFinite(Date.parse(summary!.at))).toBe(true);
+        await vi.waitFor(async () => {
+          expect(await eventLogService.readForTask(repoPath, fixture.task.id)).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                event: "task.blocked",
+                taskId: fixture.task.id,
+                data: expect.objectContaining({
+                  attempt: 1,
+                  failureType: "environment_setup",
+                  summary: expect.stringContaining("completed work retained"),
+                }),
+              }),
+            ])
+          );
+        });
+        const diagnostics = await new TaskExecutionDiagnosticsService(
+          new ProjectService(),
+          taskStore,
+          mockSessionManager
+        ).getDiagnostics(projectId, fixture.task.id);
+        expect(diagnostics.attempts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              attempt: 1,
+              finalOutcome: "blocked",
+              finalSummary: expect.stringContaining("completed work retained"),
+            }),
+          ])
+        );
+        expect(internal.getState(projectId).slots.has(fixture.task.id)).toBe(false);
+        expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
+        expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+      } finally {
+        try {
+          await controller.cancelTask(projectId, fixture.task.id);
+          internal.getState(projectId).slots.delete(fixture.task.id);
+        } finally {
+          // clearAllMocks only clears call history. Restore every implementation
+          // before closing this fixture's database so later tests cannot use it.
+          taskStore.runWrite = priorRunWrite;
+          taskStore.getDb = priorGetDb;
+          fixtureMocks.forEach((mock, index) => {
+            mock.mockReset();
+            const implementation = priorImplementations[index];
+            if (implementation) mock.mockImplementation(implementation);
+          });
+          vi.mocked(orchestrator.nudge).mockRestore();
+          await db.close();
+        }
+      }
+    });
+
+    it("suspends post-coding validation in the real controller and resumes without another coder", async () => {
+      const db = await initAppDb("sqlite://:memory:");
+      const fixture = await prepareRetainedWork("local-resource-wait");
+      const store = new LocalRecoveryStore(() => db.getClient());
+      let foreignResourceAlive = true;
+      let releaseWait!: () => void;
+      const waitFinished = new Promise<void>((resolve) => {
+        releaseWait = resolve;
+      });
+      let reportWaiting!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        reportWaiting = resolve;
+      });
+      const controller = new LocalRecoveryController(store, {
+        capture: async () => ({
+          authorityHash: executionAuthorityHash(toolchainProfile),
+          contextHash: "retained-context",
+          head,
+          cwd: fixture.worktreePath,
+          inputs: [],
+        }),
+        isAlive: () => foreignResourceAlive,
+        wait: async () => {
+          reportWaiting();
+          await waitFinished;
+        },
+      });
+      orchestrator.setLocalRecoveryController(controller);
+      const gate = vi
+        .fn()
+        .mockResolvedValueOnce({
+          command: "project-verify",
+          reason: "Command timed out: project-verify",
+          output:
+            "Waiting for validation in /foreign/worktree (PID 98765); running suites remain uninterrupted.",
+          category: "environment_setup",
+          classificationReason: "validation_resource_busy",
+        })
+        .mockResolvedValue(null);
+      orchestrator.setMergeQualityGateRunner(gate);
+      const internal = orchestrator as unknown as {
+        getState(projectId: string): {
+          slots: Map<
+            string,
+            {
+              localRecoveryWaiting?: boolean;
+              phaseResult: ReturnType<typeof phaseResult>;
+              worktreePath: string | null;
+              agent: { startedAt: string };
+            }
+          >;
+          status: { totalFailed: number };
+        };
+        createSlot(
+          taskId: string,
+          title: string,
+          branch: string,
+          attempt: number
+        ): {
+          localRecoveryWaiting?: boolean;
+          phaseResult: ReturnType<typeof phaseResult>;
+          worktreePath: string | null;
+          agent: { startedAt: string };
+        };
+        handleCodingDone(
+          projectId: string,
+          repoPath: string,
+          task: typeof fixture.task,
+          branch: string,
+          code: number
+        ): Promise<void>;
+        executeCodingPhase(...args: unknown[]): Promise<void>;
+        mergeCoordinator: { performMergeAndDone(...args: unknown[]): Promise<void> };
+      };
+      const slot = internal.createSlot(fixture.task.id, fixture.task.title, fixture.branchName, 1);
+      slot.worktreePath = fixture.worktreePath;
+      slot.agent.startedAt = new Date().toISOString();
+      internal.getState(projectId).slots.set(fixture.task.id, slot);
+      const coder = vi.spyOn(internal, "executeCodingPhase").mockResolvedValue(undefined);
+      const merge = vi
+        .spyOn(internal.mergeCoordinator, "performMergeAndDone")
+        .mockResolvedValue(undefined);
+      await orchestrator.pinValidationAuthority(
+        projectId,
+        fixture.task as never,
+        1,
+        toolchainProfile
+      );
+      const completed = internal.handleCodingDone(
+        projectId,
+        repoPath,
+        fixture.task,
+        fixture.branchName,
+        0
+      );
+      try {
+        await waiting;
+        expect(slot.localRecoveryWaiting).toBe(true);
+        expect(coder).not.toHaveBeenCalled();
+        expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
+        expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+        expect(mockDeleteAssignmentAt).not.toHaveBeenCalled();
+        expect(
+          await fs.readFile(path.join(fixture.worktreePath, "implemented.ts"), "utf8")
+        ).toContain("implemented = true");
+        foreignResourceAlive = false;
+        releaseWait();
+        await completed;
+        // The mock checkout has no verifiable Git input fingerprint, so the
+        // subsequent pre-merge gate deliberately cannot reuse its early artifact.
+        expect(gate).toHaveBeenCalledTimes(3);
+        expect(merge).toHaveBeenCalledTimes(1);
+        expect(coder).not.toHaveBeenCalled();
+        expect(internal.getState(projectId).status.totalFailed).toBe(0);
+      } finally {
+        foreignResourceAlive = false;
+        releaseWait();
+        await completed.catch(() => {});
+        internal.getState(projectId).slots.delete(fixture.task.id);
+        await db.close();
+      }
+    });
+
+    it("does not reopen a user-closed task when its waiting validation is cancelled", async () => {
+      const db = await initAppDb("sqlite://:memory:");
+      const fixture = await prepareRetainedWork("local-cancel-closed");
+      const store = new LocalRecoveryStore(() => db.getClient());
+      let status = "in_progress";
+      mockTaskStoreShow.mockImplementation(async () => ({ ...fixture.task, status }));
+      mockTaskStoreUpdate.mockImplementation(async (_projectId, _taskId, update) => {
+        if (typeof update.status === "string") status = update.status;
+      });
+      let reportWaiting!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        reportWaiting = resolve;
+      });
+      const controller = new LocalRecoveryController(store, {
+        capture: async () => ({
+          authorityHash: executionAuthorityHash(toolchainProfile),
+          contextHash: "retained-context",
+          head,
+          cwd: fixture.worktreePath,
+          inputs: [],
+        }),
+        isAlive: () => true,
+        wait: (signal) =>
+          new Promise<void>((_resolve, reject) => {
+            reportWaiting();
+            const cancelled = () => reject(new Error("Fixture wait cancelled"));
+            signal.addEventListener("abort", cancelled, { once: true });
+            if (signal.aborted) cancelled();
+          }),
+      });
+      orchestrator.setLocalRecoveryController(controller);
+      orchestrator.setMergeQualityGateRunner(
+        vi.fn().mockResolvedValue({
+          command: "project-verify",
+          reason: "Command timed out: project-verify",
+          output:
+            "Waiting for validation in /foreign/worktree (PID 98765); running suites remain uninterrupted.",
+          category: "environment_setup",
+          classificationReason: "validation_resource_busy",
+        })
+      );
+      const internal = orchestrator as unknown as {
+        getState(projectId: string): {
+          slots: Map<string, { worktreePath: string | null; agent: { startedAt: string } }>;
+        };
+        createSlot(
+          taskId: string,
+          title: string,
+          branch: string,
+          attempt: number
+        ): { worktreePath: string | null; agent: { startedAt: string } };
+        handleCodingDone(
+          projectId: string,
+          repoPath: string,
+          task: typeof fixture.task,
+          branch: string,
+          code: number
+        ): Promise<void>;
+      };
+      const slot = internal.createSlot(fixture.task.id, fixture.task.title, fixture.branchName, 1);
+      slot.worktreePath = fixture.worktreePath;
+      slot.agent.startedAt = new Date().toISOString();
+      internal.getState(projectId).slots.set(fixture.task.id, slot);
+      await orchestrator.pinValidationAuthority(
+        projectId,
+        fixture.task as never,
+        1,
+        toolchainProfile
+      );
+      const completed = internal.handleCodingDone(
+        projectId,
+        repoPath,
+        fixture.task,
+        fixture.branchName,
+        0
+      );
+      try {
+        await waiting;
+        status = "closed";
+        await orchestrator.stopTaskAndFreeSlot(projectId, fixture.task.id);
+        await completed;
+        expect(status).toBe("closed");
+        expect(mockTaskStoreUpdate).not.toHaveBeenCalledWith(
+          projectId,
+          fixture.task.id,
+          expect.objectContaining({ status: "blocked" })
+        );
+        expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
+      } finally {
+        await controller.cancelTask(projectId, fixture.task.id);
+        await completed.catch(() => {});
+        internal.getState(projectId).slots.delete(fixture.task.id);
+        await db.close();
+      }
+    });
+
+    it("restores a durable rejected review after restart without approving or recoding the task", async () => {
+      const db = await initAppDb("sqlite://:memory:");
+      const fixture = await prepareRetainedWork("local-review-restart");
+      mockGetSettings.mockResolvedValue({
+        ...defaultSettings,
+        reviewMode: "always",
+        agenticRepairEnabled: false,
+        toolchainProfile,
+      });
+      const previous = new LocalRecoveryStore(() => db.getClient(), os.hostname(), 99999999);
+      const workspace = await fs.realpath(fixture.worktreePath);
+      const incident = await previous.create(projectId, workspace, "retained-context");
+      incident.state = "waiting";
+      await previous.save(incident);
+      await previous.checkpoint(incident, fixture.task.id, {
+        worktreePath: workspace,
+        branchName: fixture.branchName,
+        baseBranch: "main",
+        head,
+        contextHash: "retained-context",
+        phase: "review",
+        phaseResult: phaseResult(),
+        attempt: 1,
+        continuation: "review_validation",
+      });
+      const rejected = {
+        status: "rejected" as const,
+        summary: "Keep this concrete defect finding",
+        issues: ["The implementation has a real defect"],
+        notes: "",
+      };
+      await previous.rememberReview(projectId, fixture.task.id, "legacy:1", "__general_review__", {
+        status: "rejected",
+        result: rejected,
+        exitCode: 0,
+      });
+      await previous.pinAuthority(
+        projectId,
+        fixture.task.id,
+        "legacy:1",
+        executionAuthorityHash(toolchainProfile)
+      );
+      const store = new LocalRecoveryStore(() => db.getClient());
+      const controller = new LocalRecoveryController(store, {
+        capture: async () => ({
+          authorityHash: executionAuthorityHash(toolchainProfile),
+          contextHash: "retained-context",
+          head,
+          cwd: workspace,
+          inputs: [],
+        }),
+      });
+      orchestrator.setLocalRecoveryController(controller);
+      const gate = vi.fn().mockResolvedValue(null);
+      orchestrator.setMergeQualityGateRunner(gate);
+      const internal = orchestrator as unknown as {
+        getState(projectId: string): { slots: Map<string, unknown> };
+        executeCodingPhase(...args: unknown[]): Promise<void>;
+        executeReviewPhase(...args: unknown[]): Promise<void>;
+        reviewService: { handleReviewRejection(...args: unknown[]): Promise<void> };
+        mergeCoordinator: { performMergeAndDone(...args: unknown[]): Promise<void> };
+      };
+      const coder = vi.spyOn(internal, "executeCodingPhase").mockResolvedValue(undefined);
+      const reviewer = vi.spyOn(internal, "executeReviewPhase").mockResolvedValue(undefined);
+      const rejection = vi
+        .spyOn(internal.reviewService, "handleReviewRejection")
+        .mockResolvedValue(undefined);
+      const merge = vi
+        .spyOn(internal.mergeCoordinator, "performMergeAndDone")
+        .mockResolvedValue(undefined);
+      try {
+        expect(
+          await orchestrator.resumeRetainedLocalValidation(projectId, repoPath, fixture.task.id)
+        ).toBe(true);
+        await vi.waitFor(() => expect(rejection).toHaveBeenCalled());
+        expect(rejection).toHaveBeenCalledWith(
+          projectId,
+          repoPath,
+          fixture.task,
+          fixture.branchName,
+          rejected
+        );
+        expect(gate).toHaveBeenCalled();
+        expect(coder).not.toHaveBeenCalled();
+        expect(reviewer).not.toHaveBeenCalled();
+        expect(merge).not.toHaveBeenCalled();
+        expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+        expect(mockDeleteAssignmentAt).not.toHaveBeenCalled();
+        expect(
+          (await store.reviews(projectId, fixture.task.id, "legacy:1"))[0]?.outcome.result
+        ).toMatchObject(rejected);
+      } finally {
+        await controller.cancelTask(projectId, fixture.task.id);
+        internal.getState(projectId).slots.delete(fixture.task.id);
+        await db.close();
+      }
+    });
   });
 
   describe("governance resume", () => {
@@ -1690,7 +2228,7 @@ describe("OrchestratorService (slot-based model)", () => {
     });
   });
 
-  describe("runMergeQualityGates", () => {
+  describe("shared merge quality gate runner", () => {
     const taskId = "task-quality-gate";
     const branchName = "opensprint/task-quality-gate";
     const baseBranch = "main";
@@ -1748,14 +2286,22 @@ describe("OrchestratorService (slot-based model)", () => {
     }
 
     const runMergeQualityGates = () =>
-      orchestrator.runMergeQualityGates({
-        projectId,
-        repoPath,
-        worktreePath,
-        taskId,
-        branchName,
-        baseBranch,
-      });
+      // These contracts describe the shared runner's classification and legacy
+      // repair path. Controller recovery is exercised above with real persistence.
+      runMergeQualityGatesShared(
+        {
+          projectId,
+          repoPath,
+          worktreePath,
+          taskId,
+          branchName,
+          baseBranch,
+        },
+        {
+          runCommand: mockRunCommand,
+          symlinkNodeModules: mockSymlinkNodeModules,
+        }
+      );
 
     it("does not auto-repair when failure has no env fingerprint", async () => {
       const previousNodeEnv = process.env.NODE_ENV;

@@ -217,6 +217,65 @@ describe("AgentClient", () => {
     }
 
     it.each(["codex", "claude-cli"] as const)(
+      "waits for observed %s close after abort and rejects late successful output",
+      async (type) => {
+        const child = nativeCliChild();
+        mockSpawn.mockReturnValue(child);
+        const signalGroup = vi
+          .spyOn(processGroup, "signalProcessGroup")
+          .mockImplementation(() => {});
+        const abort = new AbortController();
+        let settled = false;
+        const pending = client.invoke({
+          config: { type, model: null, cliCommand: null },
+          prompt: "Read-only execution diagnosis",
+          abortSignal: abort.signal,
+        });
+        const outcome = pending
+          .then(
+            (response) => ({ response }),
+            (error: unknown) => ({ error })
+          )
+          .finally(() => {
+            settled = true;
+          });
+        try {
+          await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledOnce());
+          child.stdout.emit("data", Buffer.from('{"action":"retry_validation"}'));
+          abort.abort();
+          await Promise.resolve();
+          expect(signalGroup).toHaveBeenCalledWith(child.pid, "SIGTERM");
+          expect(settled).toBe(false);
+          child.emit("close", 0);
+          const result = await outcome;
+          expect(result).toHaveProperty("error");
+          expect(String((result as { error: unknown }).error)).toMatch(/cancelled/i);
+          expect(result).not.toHaveProperty("response");
+        } finally {
+          child.emit("close", 0);
+          await outcome;
+          signalGroup.mockRestore();
+        }
+      }
+    );
+
+    it.each(["codex", "claude-cli"] as const)(
+      "does not spawn %s when already aborted",
+      async (type) => {
+        const abort = new AbortController();
+        abort.abort(new Error("Diagnosis already cancelled"));
+        await expect(
+          client.invoke({
+            config: { type, model: null, cliCommand: null },
+            prompt: "Read-only execution diagnosis",
+            abortSignal: abort.signal,
+          })
+        ).rejects.toThrow("Diagnosis already cancelled");
+        expect(mockSpawn).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(["codex", "claude-cli"] as const)(
       "passes explicit %s effort on chat invocations",
       async (type) => {
         const child = nativeCliChild();

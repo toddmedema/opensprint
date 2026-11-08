@@ -10,6 +10,8 @@ export const QUALITY_GATE_OUTPUT_SNIPPET_LIMIT = 1800;
 
 /** Structural input compatible with MergeCoordinatorService.MergeQualityGateFailure. */
 export type QualityGateFailureForHelpers = {
+  preserveWork?: boolean;
+  recoveryIncidentId?: string;
   command: string;
   reason?: string;
   output?: string;
@@ -121,7 +123,8 @@ export function buildQualityGateStructuredDetails(
     validationWorkspace?: "baseline" | "merged_candidate" | "task_worktree" | "repo_root" | null;
   }
 ): QualityGateStructuredDetails {
-  const failedGateCommand = qualityGateFailure?.command?.trim() || fallback?.command?.trim() || null;
+  const failedGateCommand =
+    qualityGateFailure?.command?.trim() || fallback?.command?.trim() || null;
   const failedGateReason = qualityGateFailure?.reason?.trim() || fallback?.reason?.trim() || null;
   const firstErrorLine =
     qualityGateFailure?.firstErrorLine?.trim() || fallback?.firstErrorLine?.trim() || null;
@@ -225,6 +228,8 @@ export function buildMergeQualityGateJobError(
     [],
     "requeued",
     {
+      preserveWork: failure.preserveWork,
+      recoveryIncidentId: failure.recoveryIncidentId,
       command: failure.command,
       reason,
       outputSnippet,

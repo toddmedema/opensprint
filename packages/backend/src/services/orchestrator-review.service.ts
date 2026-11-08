@@ -65,6 +65,7 @@ import { assertWorktreeIntegrity } from "../utils/worktree-health.js";
 import { getMergeQualityGateCommands } from "./merge-quality-gates.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { createLogger } from "../utils/logger.js";
+import { localRecoveryStore } from "./local-recovery.service.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
 
 import { governanceExecutionService } from "./governance-execution.service.js";
@@ -80,6 +81,7 @@ const REVIEW_RESULT_EXPECTED_SHAPE =
   'a JSON object like {"status":"approved","summary":"..."} or {"status":"rejected","summary":"...","issues":["..."],"notes":"..."}';
 
 export interface OrchestratorReviewHost {
+  getLocalRecoveryStore?(): import("./local-recovery-store.js").LocalRecoveryStore;
   getState(projectId: string): {
     slots: Map<string, AgentSlot>;
     status: { queueDepth: number };
@@ -283,6 +285,9 @@ export class OrchestratorReviewService {
             settings.toolchainProfile,
             sl
           );
+          if (sl.agent.cancelled || this.host.getState(projectId).slots.get(task.id) !== sl) {
+            return;
+          }
           if (qualityGateFailure) {
             const detail = this.host.applyQualityGateFailure(
               sl.phaseResult,
@@ -354,6 +359,17 @@ export class OrchestratorReviewService {
           reviewOutcome
         ),
       {
+        persistReviewOutcome: async (outcome, angle) => {
+          const slot = this.host.getState(projectId).slots.get(task.id);
+          if (slot)
+            await (this.host.getLocalRecoveryStore?.() ?? localRecoveryStore).rememberReview(
+              projectId,
+              task.id,
+              `${task.created_at ?? "legacy"}:${slot.attempt}`,
+              angle ?? "__general_review__",
+              outcome
+            );
+        },
         reviewAngles: settings.reviewAngles,
         includeGeneralReview: settings.includeGeneralReview === true ? true : undefined,
         ...(angles.length > 1 &&

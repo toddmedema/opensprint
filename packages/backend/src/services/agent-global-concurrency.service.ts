@@ -55,6 +55,28 @@ interface ProjectSemaphoreState {
 }
 
 const semaphores = new Map<string, ProjectSemaphoreState>();
+const recoveryCapacity: ProjectSemaphoreState = {
+  limit: 1,
+  inFlight: 0,
+  waitQueue: [],
+  revision: 0,
+};
+
+/** One reserved diagnostic slot prevents saturated coding admission from deadlocking recovery. */
+export async function acquireRecoveryAgentSlot(signal?: AbortSignal): Promise<() => void> {
+  signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const waiter: SlotWaiter = { resolve, reject, signal };
+    waiter.onAbort = () => {
+      const i = recoveryCapacity.waitQueue.indexOf(waiter);
+      if (i >= 0) recoveryCapacity.waitQueue.splice(i, 1);
+      reject(signal?.reason ?? new Error("Recovery admission cancelled"));
+    };
+    signal?.addEventListener("abort", waiter.onAbort, { once: true });
+    recoveryCapacity.waitQueue.push(waiter);
+    drain(recoveryCapacity);
+  });
+}
 
 function holdSlot(state: ProjectSemaphoreState): () => void {
   state.inFlight += 1;

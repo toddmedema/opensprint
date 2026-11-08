@@ -7,6 +7,8 @@ import { createLogger } from "../utils/logger.js";
 import { runCommand as runCommandDefault, type CommandRunResult } from "../utils/command-runner.js";
 import { assertWorktreeIntegrity, type WorktreeIntegrityResult } from "../utils/worktree-health.js";
 import { BranchManager } from "./branch-manager.js";
+import type { ToolchainProfile } from "@opensprint/shared";
+import { resolveToolchainProfile, isNodeDependencyStrategy } from "./toolchain-profile.service.js";
 
 const log = createLogger("validation-workspace");
 const NPM_CI_TIMEOUT_MS = 10 * 60 * 1000;
@@ -66,6 +68,20 @@ export class ValidationWorkspaceService {
     this.branchManager = deps.branchManager ?? new BranchManager();
   }
 
+  private async borrowAvailableDependencies(
+    repoPath: string,
+    worktreePath: string,
+    profile?: ToolchainProfile
+  ): Promise<void> {
+    const strategy = resolveToolchainProfile(profile).dependencyStrategy;
+    if (!isNodeDependencyStrategy(strategy) || strategy === "npm_ci_worktree") return;
+    const source = path.join(repoPath, "node_modules");
+    if (!(await this.isNodeModulesUsable(source))) return;
+    await fs.symlink(source, path.join(worktreePath, "node_modules"), "junction").catch((err) => {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    });
+  }
+
   private async createWorkspaceBaseDir(kind: ValidationWorkspaceKind): Promise<string> {
     const baseDir = path.join(os.tmpdir(), "opensprint-validation");
     await fs.mkdir(baseDir, { recursive: true });
@@ -77,6 +93,21 @@ export class ValidationWorkspaceService {
     worktreePath: string,
     branchName: string | null
   ): Promise<void> {
+    try {
+      const { localRecoveryStore } = await import("./local-recovery.service.js");
+      if (
+        await localRecoveryStore.protectsWorkspace(
+          await fs.realpath(worktreePath).catch(() => worktreePath)
+        )
+      )
+        return;
+    } catch (err) {
+      log.warn("Retaining validation workspace: recovery ownership unavailable", {
+        worktreePath,
+        err,
+      });
+      return;
+    }
     try {
       await this.runCommand(
         {
@@ -94,9 +125,13 @@ export class ValidationWorkspaceService {
         err: err instanceof Error ? err.message : String(err),
       });
     }
-    await fs.rm(path.dirname(worktreePath), { recursive: true, force: true }).catch((err: unknown) => {
-      log.warn("validation workspace cleanup failed", { err: err instanceof Error ? err.message : String(err) });
-    });
+    await fs
+      .rm(path.dirname(worktreePath), { recursive: true, force: true })
+      .catch((err: unknown) => {
+        log.warn("validation workspace cleanup failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
     if (branchName) {
       await this.runCommand(
         {
@@ -108,7 +143,9 @@ export class ValidationWorkspaceService {
           timeout: 30_000,
         }
       ).catch((err: unknown) => {
-        log.warn("validation branch cleanup failed", { err: err instanceof Error ? err.message : String(err) });
+        log.warn("validation branch cleanup failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
       });
     }
   }
@@ -124,20 +161,29 @@ export class ValidationWorkspaceService {
   async verifyWorkspaceHealth(
     repoPath: string,
     worktreePath: string,
-    label: ValidationWorkspaceKind | "task_worktree" | "repo_root" = "task_worktree"
+    label: ValidationWorkspaceKind | "task_worktree" | "repo_root" = "task_worktree",
+    toolchainProfile?: ToolchainProfile
   ): Promise<{ healthy: boolean; errors: string[] }> {
     const errors: string[] = [];
-    const isNpmWorkspace = await this.repoHasFile(repoPath, "package.json");
+    const resolved = resolveToolchainProfile(toolchainProfile);
+    const strategy = resolved.dependencyStrategy;
+    const dependencyRoot = path.resolve(worktreePath, resolved.workingDirectory);
+    if (path.relative(worktreePath, dependencyRoot).startsWith(".."))
+      return { healthy: false, errors: ["Validation directory escapes retained workspace"] };
+    const isNpmWorkspace =
+      isNodeDependencyStrategy(strategy) && (await this.repoHasFile(repoPath, "package.json"));
     if (isNpmWorkspace) {
-      const packageJsonPath = path.join(worktreePath, "package.json");
+      const packageJsonPath = path.join(dependencyRoot, "package.json");
       try {
         await fs.access(packageJsonPath);
       } catch {
         errors.push(`package.json missing at ${packageJsonPath}`);
       }
 
-      const workspaceLockfilePath = path.join(worktreePath, "package-lock.json");
-      const repoHasLockfile = await this.repoHasFile(repoPath, "package-lock.json");
+      const workspaceLockfilePath = path.join(dependencyRoot, "package-lock.json");
+      const repoHasLockfile =
+        (strategy === "npm" || strategy === "npm_ci_worktree") &&
+        (await this.repoHasFile(repoPath, "package-lock.json"));
       if (repoHasLockfile) {
         try {
           await fs.access(workspaceLockfilePath);
@@ -146,7 +192,7 @@ export class ValidationWorkspaceService {
         }
       }
 
-      const nodeModulesPath = path.join(worktreePath, "node_modules");
+      const nodeModulesPath = path.join(dependencyRoot, "node_modules");
       if (!(await this.isNodeModulesUsable(nodeModulesPath))) {
         errors.push(`node_modules missing or unusable at ${nodeModulesPath}`);
       }
@@ -170,9 +216,16 @@ export class ValidationWorkspaceService {
   private async verifyWorkspaceReady(
     repoPath: string,
     worktreePath: string,
-    kind: ValidationWorkspaceKind
+    kind: ValidationWorkspaceKind,
+    profile?: ToolchainProfile,
+    deferDependencies = false
   ): Promise<void> {
-    const { healthy, errors } = await this.verifyWorkspaceHealth(repoPath, worktreePath, kind);
+    const { healthy, errors } = await this.verifyWorkspaceHealth(
+      repoPath,
+      worktreePath,
+      kind,
+      deferDependencies ? { ...profile, dependencyStrategy: "none" } : profile
+    );
     if (!healthy) {
       throw new Error(`Validation workspace not ready (${kind}): ${errors.join("; ")}`);
     }
@@ -180,7 +233,9 @@ export class ValidationWorkspaceService {
 
   async createBaselineWorkspace(
     repoPath: string,
-    baseBranch: string
+    baseBranch: string,
+    profile?: ToolchainProfile,
+    deferDependencies = false
   ): Promise<ValidationWorkspaceHandle> {
     await ensureRepoHasInitialCommit(repoPath, baseBranch);
     const baseDir = await this.createWorkspaceBaseDir("baseline");
@@ -204,10 +259,15 @@ export class ValidationWorkspaceService {
         timeout: 30_000,
       }
     );
-    if (await this.repoHasFile(repoPath, "package.json")) {
+    if (
+      !deferDependencies &&
+      isNodeDependencyStrategy(resolveToolchainProfile(profile).dependencyStrategy) &&
+      (await this.repoHasFile(repoPath, "package.json"))
+    ) {
       await this.ensureWorktreeNodeModules(repoPath, worktreePath, "baseline");
     }
-    await this.verifyWorkspaceReady(repoPath, worktreePath, "baseline");
+    if (deferDependencies) await this.borrowAvailableDependencies(repoPath, worktreePath, profile);
+    await this.verifyWorkspaceReady(repoPath, worktreePath, "baseline", profile, deferDependencies);
 
     return {
       kind: "baseline",
@@ -219,10 +279,39 @@ export class ValidationWorkspaceService {
     };
   }
 
+  /** Reattach only the server-recorded candidate in this repository's worktree registry. */
+  async reopenMergeCandidateWorkspace(
+    repoPath: string,
+    candidate: { worktreePath: string; branchName: string }
+  ): Promise<ValidationWorkspaceHandle> {
+    const root = await fs.realpath(repoPath);
+    const worktree = await fs.realpath(candidate.worktreePath);
+    const git = async (cwd: string, args: string[]) =>
+      (await this.runCommand({ command: "git", args }, { cwd, timeout: 10000 })).stdout.trim();
+    const common = await git(worktree, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    const expected = await git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    const branch = await git(worktree, ["symbolic-ref", "--short", "HEAD"]);
+    if (
+      worktree === root ||
+      (await fs.realpath(common)) !== (await fs.realpath(expected)) ||
+      branch !== candidate.branchName ||
+      !branch.startsWith("opensprint/validation/")
+    )
+      throw new Error("Retained candidate identity does not match its repository");
+    return {
+      kind: "merged_candidate",
+      worktreePath: worktree,
+      branchName: branch,
+      cleanup: () => this.cleanupWorktree(root, worktree, branch),
+    };
+  }
+
   async createMergeCandidateWorkspace(
     repoPath: string,
     taskId: string,
-    baseBranch: string
+    baseBranch: string,
+    profile?: ToolchainProfile,
+    deferDependencies = false
   ): Promise<ValidationWorkspaceHandle> {
     await ensureRepoHasInitialCommit(repoPath, baseBranch);
     const baseDir = await this.createWorkspaceBaseDir("merged_candidate");
@@ -249,10 +338,21 @@ export class ValidationWorkspaceService {
       }
     );
 
-    if (await this.repoHasFile(repoPath, "package.json")) {
+    if (
+      !deferDependencies &&
+      isNodeDependencyStrategy(resolveToolchainProfile(profile).dependencyStrategy) &&
+      (await this.repoHasFile(repoPath, "package.json"))
+    ) {
       await this.ensureWorktreeNodeModules(repoPath, worktreePath, "merged_candidate");
     }
-    await this.verifyWorkspaceReady(repoPath, worktreePath, "merged_candidate");
+    if (deferDependencies) await this.borrowAvailableDependencies(repoPath, worktreePath, profile);
+    await this.verifyWorkspaceReady(
+      repoPath,
+      worktreePath,
+      "merged_candidate",
+      profile,
+      deferDependencies
+    );
 
     return {
       kind: "merged_candidate",
@@ -323,10 +423,10 @@ export class ValidationWorkspaceService {
     }
 
     // --- Strategy 2: repair main repo deps, then re-symlink ---
-    log.info(
-      `${kind} symlink target missing or empty; ensuring main repo deps are healthy`,
-      { worktreePath, repoPath }
-    );
+    log.info(`${kind} symlink target missing or empty; ensuring main repo deps are healthy`, {
+      worktreePath,
+      repoPath,
+    });
     const repoRepaired = await this.branchManager.ensureRepoNodeModules(repoPath);
     if (repoRepaired) {
       await this.branchManager.symlinkNodeModules(repoPath, worktreePath);
@@ -352,10 +452,9 @@ export class ValidationWorkspaceService {
       };
     }
 
-    log.info(
-      `${kind} symlink still broken after repo repair; running npm ci in worktree`,
-      { worktreePath }
-    );
+    log.info(`${kind} symlink still broken after repo repair; running npm ci in worktree`, {
+      worktreePath,
+    });
     try {
       await this.runCommand(
         { command: "npm", args: ["ci"] },

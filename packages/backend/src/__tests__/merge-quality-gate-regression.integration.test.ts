@@ -4,7 +4,10 @@ import os from "os";
 import path from "path";
 import type { MergeCoordinatorHost, MergeSlot } from "../services/merge-coordinator.service.js";
 import { MergeCoordinatorService } from "../services/merge-coordinator.service.js";
-import { OrchestratorService } from "../services/orchestrator.service.js";
+import {
+  runMergeQualityGates as runMergeQualityGatesShared,
+  type MergeQualityGateRunOptions,
+} from "../services/merge-quality-gate-runner.js";
 import { BranchManager } from "../services/branch-manager.js";
 import { TaskExecutionDiagnosticsService } from "../services/task-execution-diagnostics.service.js";
 // These gate/repair fixtures intentionally contain a fake .git marker; code admission is covered
@@ -75,6 +78,17 @@ const mockEventReadForTask = vi.fn();
 const { createBaselineWorkspaceMock } = vi.hoisted(() => ({
   createBaselineWorkspaceMock: vi.fn(),
 }));
+
+// These synthetic workspaces exercise shared-runner classification and legacy
+// repair. Durable controller recovery has separate real Git/database fixtures.
+function runFixtureQualityGates(options: MergeQualityGateRunOptions) {
+  const branches = new BranchManager();
+  return runMergeQualityGatesShared(options, {
+    runCommand: mockRunCommand,
+    symlinkNodeModules: (repoPath, worktreePath) =>
+      branches.symlinkNodeModules(repoPath, worktreePath),
+  });
+}
 
 vi.mock("../services/task-store.service.js", () => ({
   taskStore: {},
@@ -295,7 +309,6 @@ describe("Cross-service quality-gate regression integration", () => {
   });
 
   it("runs one repair cycle, blocks env-setup failures, and preserves structured diagnostics fields", async () => {
-    const orchestrator = new OrchestratorService();
     const symlinkSpy = vi
       .spyOn(BranchManager.prototype, "symlinkNodeModules")
       .mockResolvedValue(undefined);
@@ -418,7 +431,7 @@ describe("Cross-service quality-gate regression integration", () => {
           ),
       },
       runMergerAgentAndWait: vi.fn().mockResolvedValue(false),
-      runMergeQualityGates: (options) => orchestrator.runMergeQualityGates(options),
+      runMergeQualityGates: (options) => runFixtureQualityGates(options),
       setBaselineRuntimeState: vi.fn().mockResolvedValue(undefined),
       sessionManager: {
         createSession: vi.fn().mockResolvedValue({ id: "sess-1" }),
@@ -555,7 +568,6 @@ describe("Cross-service quality-gate regression integration", () => {
   });
 
   it("requeues non-environment quality-gate failures without repair and persists structured details", async () => {
-    const orchestrator = new OrchestratorService();
     const symlinkSpy = vi
       .spyOn(BranchManager.prototype, "symlinkNodeModules")
       .mockResolvedValue(undefined);
@@ -668,7 +680,7 @@ describe("Cross-service quality-gate regression integration", () => {
           ),
       },
       runMergerAgentAndWait: vi.fn().mockResolvedValue(false),
-      runMergeQualityGates: (options) => orchestrator.runMergeQualityGates(options),
+      runMergeQualityGates: (options) => runFixtureQualityGates(options),
       setBaselineRuntimeState: vi.fn().mockResolvedValue(undefined),
       sessionManager: {
         createSession: vi.fn().mockResolvedValue({ id: "sess-1" }),
@@ -805,8 +817,6 @@ describe("Cross-service quality-gate regression integration", () => {
   });
 
   it("missing-symlink-source: host repo with no node_modules triggers repair that creates them, and gate passes", async () => {
-    const orchestrator = new OrchestratorService();
-
     // Remove node_modules from the repo (simulates host with no deps)
     await fs.rm(path.join(repoPath, "node_modules"), { recursive: true, force: true });
     // worktreePath also has no node_modules (simulates broken symlink target)
@@ -953,7 +963,7 @@ describe("Cross-service quality-gate regression integration", () => {
           ),
       },
       runMergerAgentAndWait: vi.fn().mockResolvedValue(false),
-      runMergeQualityGates: (options) => orchestrator.runMergeQualityGates(options),
+      runMergeQualityGates: (options) => runFixtureQualityGates(options),
       setBaselineRuntimeState: vi.fn().mockResolvedValue(undefined),
       sessionManager: {
         createSession: vi.fn().mockResolvedValue({ id: "sess-1" }),
@@ -1005,8 +1015,6 @@ describe("Cross-service quality-gate regression integration", () => {
   });
 
   it("post-repair success: npm ci in worktree fallback + re-symlink when host becomes healthy", async () => {
-    const orchestrator = new OrchestratorService();
-
     // Remove node_modules from both repo and worktree
     await fs.rm(path.join(repoPath, "node_modules"), { recursive: true, force: true });
     await fs.rm(path.join(worktreePath, "node_modules"), { recursive: true, force: true });
@@ -1143,7 +1151,7 @@ describe("Cross-service quality-gate regression integration", () => {
           ),
       },
       runMergerAgentAndWait: vi.fn().mockResolvedValue(false),
-      runMergeQualityGates: (options) => orchestrator.runMergeQualityGates(options),
+      runMergeQualityGates: (options) => runFixtureQualityGates(options),
       setBaselineRuntimeState: vi.fn().mockResolvedValue(undefined),
       sessionManager: {
         createSession: vi.fn().mockResolvedValue({ id: "sess-1" }),
@@ -1195,8 +1203,6 @@ describe("Cross-service quality-gate regression integration", () => {
 
   describe("merged_candidate: node_modules missing + npm ci repair regression", () => {
     it("merged_candidate with no node_modules triggers precheck failure that leads to auto-repair", async () => {
-      const orchestrator = new OrchestratorService();
-
       await fs.rm(path.join(worktreePath, "node_modules"), { recursive: true, force: true });
 
       let repairNpmCiCalled = false;
@@ -1329,7 +1335,7 @@ describe("Cross-service quality-gate regression integration", () => {
             ),
         },
         runMergerAgentAndWait: vi.fn().mockResolvedValue(false),
-        runMergeQualityGates: (options) => orchestrator.runMergeQualityGates(options),
+        runMergeQualityGates: (options) => runFixtureQualityGates(options),
         setBaselineRuntimeState: vi.fn().mockResolvedValue(undefined),
         sessionManager: {
           createSession: vi.fn().mockResolvedValue({ id: "sess-1" }),
@@ -1366,8 +1372,6 @@ describe("Cross-service quality-gate regression integration", () => {
     });
 
     it("merged_candidate npm ci repair failure surfaces actionable error with stderr in diagnostics", async () => {
-      const orchestrator = new OrchestratorService();
-
       await fs.rm(path.join(repoPath, "node_modules"), { recursive: true, force: true });
       await fs.rm(path.join(worktreePath, "node_modules"), { recursive: true, force: true });
 
@@ -1497,7 +1501,7 @@ describe("Cross-service quality-gate regression integration", () => {
             ),
         },
         runMergerAgentAndWait: vi.fn().mockResolvedValue(false),
-        runMergeQualityGates: (options) => orchestrator.runMergeQualityGates(options),
+        runMergeQualityGates: (options) => runFixtureQualityGates(options),
         setBaselineRuntimeState: vi.fn().mockResolvedValue(undefined),
         sessionManager: {
           createSession: vi.fn().mockResolvedValue({ id: "sess-1" }),
@@ -1618,8 +1622,7 @@ describe("Cross-service quality-gate regression integration", () => {
       }
     );
 
-    const orchestrator = new OrchestratorService();
-    await orchestrator.runMergeQualityGates({
+    await runFixtureQualityGates({
       projectId,
       repoPath,
       worktreePath,
@@ -1628,7 +1631,7 @@ describe("Cross-service quality-gate regression integration", () => {
       baseBranch: "main",
       validationWorkspace: "task_worktree",
     });
-    await orchestrator.runMergeQualityGates({
+    await runFixtureQualityGates({
       projectId,
       repoPath,
       worktreePath,

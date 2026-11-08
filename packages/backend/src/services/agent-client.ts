@@ -974,6 +974,7 @@ async function notifyProviderBlocked(
 }
 
 export interface AgentInvokeOptions {
+  abortSignal?: AbortSignal;
   /** The agent config to use */
   config: AgentConfig;
   /** The prompt/message to send */
@@ -1060,6 +1061,7 @@ export class AgentClient {
    * Invoke an agent and get a response.
    */
   async invoke(options: AgentInvokeOptions): Promise<AgentResponse> {
+    options.abortSignal?.throwIfAborted();
     switch (options.config.type) {
       case "claude":
         return this.invokeClaudeApi(options);
@@ -2538,6 +2540,7 @@ export class AgentClient {
 
   private async invokeCodexCli(options: AgentInvokeOptions): Promise<AgentResponse> {
     if (options.config.effort) await assertNativeCliEffort(options.config);
+    options.abortSignal?.throwIfAborted();
     const fullPrompt = buildFullPrompt(options);
     const child = spawn(
       resolveNativeCliCommand("codex"),
@@ -2558,6 +2561,7 @@ export class AgentClient {
         await this.runClaudeAgentSpawn(child, {
           processGroup: true,
           timeoutMs: resolveInvokeTimeoutMs(options),
+          signal: options.abortSignal,
         })
       ).trim();
       options.onChunk?.(content);
@@ -2590,6 +2594,7 @@ export class AgentClient {
       });
     }
 
+    options.abortSignal?.throwIfAborted();
     const args = ["--tools", "", "--max-turns", "1", "--print"];
     if (config.effort) args.unshift("--effort", config.effort);
     if (config.model && config.model !== "default") {
@@ -2613,6 +2618,7 @@ export class AgentClient {
       const stdout = await this.runClaudeAgentSpawn(child, {
         processGroup: true,
         timeoutMs: resolveInvokeTimeoutMs(options),
+        signal: options.abortSignal,
       });
       const content = stdout.trim();
       if (options.onChunk) {
@@ -2783,7 +2789,7 @@ export class AgentClient {
    * Uses SIGTERM first (allows cleanup), then SIGKILL after 3s if process ignores SIGTERM. */
   private runClaudeAgentSpawn(
     child: ReturnType<typeof spawn>,
-    options?: { processGroup?: boolean; timeoutMs?: number | null }
+    options?: { processGroup?: boolean; timeoutMs?: number | null; signal?: AbortSignal }
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const timeoutMs =
@@ -2792,6 +2798,7 @@ export class AgentClient {
       let stderr = "";
       let closed = false;
       let timedOut = false;
+      let cancelled = false;
       let killTimer: ReturnType<typeof setTimeout> | null = null;
       const killChild = (signal: "SIGTERM" | "SIGKILL") => {
         if (closed) return;
@@ -2810,15 +2817,27 @@ export class AgentClient {
               killChild("SIGTERM");
               killTimer = setTimeout(() => killChild("SIGKILL"), 3000);
             }, timeoutMs);
+      const onAbort = () => {
+        if (closed || cancelled) return;
+        cancelled = true;
+        killChild("SIGTERM");
+        if (killTimer) clearTimeout(killTimer);
+        killTimer = setTimeout(() => killChild("SIGKILL"), 3000);
+      };
+      options?.signal?.addEventListener("abort", onAbort, { once: true });
+      if (options?.signal?.aborted) onAbort();
       const cleanup = () => {
         closed = true;
+        options?.signal?.removeEventListener("abort", onAbort);
         if (timeout) clearTimeout(timeout);
         if (killTimer) clearTimeout(killTimer);
       };
       // Wait for observed process completion even after timeout; partial text is never success.
       child.on("close", (code) => {
         cleanup();
-        if (timedOut) {
+        if (cancelled) {
+          reject(new Error("Agent CLI cancelled"));
+        } else if (timedOut) {
           reject(
             new AppError(
               504,

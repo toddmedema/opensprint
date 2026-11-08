@@ -12,6 +12,7 @@
 import { createLogger } from "../utils/logger.js";
 import { governanceService } from "./governance.service.js";
 import { taskStore } from "./task-store.service.js";
+import { LocalRecoveryStore } from "./local-recovery-store.js";
 
 const log = createLogger("worktree-lease");
 
@@ -185,6 +186,10 @@ export class WorktreeLeaseService {
     );
     // A shared epic lease may name a newer sibling while an earlier task still owns a docket.
     if (await governanceService.retainsWorktree(worktreeKey)) return false;
+    if (
+      await new LocalRecoveryStore(() => Promise.resolve(client)).protectsWorktreeKey(worktreeKey)
+    )
+      return false;
     if (rows.length === 0) return true;
     const row = rows[0] as {
       project_id: string;

@@ -17,6 +17,11 @@ import {
 } from "./opensprint-path-test-helper.js";
 import { truncateTitle } from "../utils/commit-message.js";
 import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
+import { validationWorkspaceService } from "../services/validation-workspace.service.js";
+import { LocalRecoveryController } from "../services/local-recovery-controller.js";
+import { localRecoveryStore } from "../services/local-recovery.service.js";
+import type { BranchManager } from "../services/branch-manager.js";
+import type { MergeQualityGateRunOptions } from "../services/merge-quality-gate-runner.js";
 
 const execAsync = promisify(exec);
 
@@ -229,6 +234,182 @@ describe.skipIf(!gitQueuePostgresOk)("GitCommitQueue", () => {
     });
     const treeFiles = treeOut.trim().split("\n").filter(Boolean);
     expect(treeFiles).toContain("feature.ts");
+  });
+
+  describe("local recovery candidate routing", () => {
+    const branchName = "opensprint/retained-candidate-task";
+    const taskId = "recovery-candidate-task";
+    const profile = {
+      dependencyStrategy: "none" as const,
+      mergeQualityGateCommands: ["project-check"],
+    };
+
+    async function prepareTaskBranch() {
+      await execAsync(`git checkout -b ${branchName}`, { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "completed-feature.txt"), "completed code\n");
+      await execAsync('git add completed-feature.txt && git commit -m "completed feature"', {
+        cwd: repoPath,
+      });
+      await execAsync("git checkout main", { cwd: repoPath });
+    }
+
+    function branchManager() {
+      return (gitCommitQueue as unknown as { branchManager: BranchManager }).branchManager;
+    }
+
+    it("routes candidate gates through the controller and preserves a held staged merge", async () => {
+      await prepareTaskBranch();
+      const controller = new LocalRecoveryController(localRecoveryStore);
+      const abort = vi.spyOn(branchManager(), "mergeAbort");
+      let candidate: string | undefined;
+      const gates = vi.fn(async (gateOptions: MergeQualityGateRunOptions) => {
+        candidate = gateOptions.worktreePath;
+        expect(gateOptions.validationWorkspace).toBe("merged_candidate");
+        expect(gateOptions.validationBranchName).toMatch(/^opensprint\/validation\//);
+        return controller.run({
+          ...gateOptions,
+          toolchainProfile: profile,
+          validate: async () => ({
+            command: "project-check",
+            reason: "Execution environment unavailable",
+            output: "fixture runtime absent",
+            category: "environment_setup",
+            classificationReason: "unknown_execution_environment",
+          }),
+        });
+      });
+      try {
+        await expect(
+          gitCommitQueue.enqueueAndWait({
+            type: "worktree_merge",
+            repoPath,
+            worktreePath: repoPath,
+            branchName,
+            taskId,
+            runQualityGates: gates,
+          })
+        ).rejects.toMatchObject({
+          stage: "quality_gate",
+          qualityGateFailure: { preserveWork: true },
+        });
+        expect(gates).toHaveBeenCalledOnce();
+        expect(abort).not.toHaveBeenCalled();
+        expect(candidate).toBeTruthy();
+        const mergeHead = await execAsync("git rev-parse --verify MERGE_HEAD", { cwd: candidate });
+        expect(mergeHead.stdout.trim()).toMatch(/^[a-f0-9]{40}$/);
+        expect(await fs.readFile(path.join(candidate!, "completed-feature.txt"), "utf8")).toBe(
+          "completed code\n"
+        );
+        expect(await localRecoveryStore.protectsWorkspace(await fs.realpath(candidate!))).toBe(
+          true
+        );
+        await expect(fs.access(path.join(repoPath, "completed-feature.txt"))).rejects.toThrow();
+      } finally {
+        abort.mockRestore();
+        if (candidate) {
+          await controller.cancelTask("unknown", taskId);
+          await execAsync("git worktree remove --force .", { cwd: candidate }).catch(() => {});
+          await fs.rm(path.dirname(candidate), { recursive: true, force: true });
+        }
+      }
+    });
+
+    it("validates the exact retained merge without reconstructing or rebasing it", async () => {
+      await prepareTaskBranch();
+      const candidate = await validationWorkspaceService.createMergeCandidateWorkspace(
+        repoPath,
+        taskId,
+        "main",
+        profile,
+        true
+      );
+      await execAsync(`git merge --no-commit --no-ff ${branchName}`, {
+        cwd: candidate.worktreePath,
+      });
+      const create = vi.spyOn(validationWorkspaceService, "createMergeCandidateWorkspace");
+      const rebase = vi.spyOn(branchManager(), "rebaseOntoMain");
+      const staging = vi.spyOn(branchManager(), "mergeBranchNoCommit");
+      const gates = vi.fn(async (gateOptions: MergeQualityGateRunOptions) => {
+        expect(await fs.realpath(gateOptions.worktreePath)).toBe(
+          await fs.realpath(candidate.worktreePath)
+        );
+        expect(gateOptions.validationBranchName).toBe(candidate.branchName);
+        expect(
+          (await execAsync("git diff --cached --name-only", { cwd: gateOptions.worktreePath }))
+            .stdout
+        ).toContain("completed-feature.txt");
+        return null;
+      });
+      try {
+        await gitCommitQueue.enqueueAndWait({
+          type: "worktree_merge",
+          repoPath,
+          worktreePath: repoPath,
+          branchName,
+          taskId,
+          retainedCandidate: {
+            worktreePath: candidate.worktreePath,
+            branchName: candidate.branchName!,
+          },
+          runQualityGates: gates,
+        });
+        expect(gates).toHaveBeenCalledOnce();
+        expect(create).not.toHaveBeenCalled();
+        expect(rebase).not.toHaveBeenCalled();
+        expect(staging).not.toHaveBeenCalled();
+        expect(await fs.readFile(path.join(repoPath, "completed-feature.txt"), "utf8")).toBe(
+          "completed code\n"
+        );
+      } finally {
+        create.mockRestore();
+        rebase.mockRestore();
+        staging.mockRestore();
+        await candidate.cleanup();
+      }
+    });
+
+    it("rejects a retained candidate with a changed identity before checks or reconstruction", async () => {
+      await prepareTaskBranch();
+      const candidate = await validationWorkspaceService.createMergeCandidateWorkspace(
+        repoPath,
+        taskId,
+        "main",
+        profile,
+        true
+      );
+      await execAsync(`git merge --no-commit --no-ff ${branchName}`, {
+        cwd: candidate.worktreePath,
+      });
+      const create = vi.spyOn(validationWorkspaceService, "createMergeCandidateWorkspace");
+      const gates = vi.fn(async () => null);
+      try {
+        await expect(
+          gitCommitQueue.enqueueAndWait({
+            type: "worktree_merge",
+            repoPath,
+            worktreePath: repoPath,
+            branchName,
+            taskId,
+            retainedCandidate: {
+              worktreePath: candidate.worktreePath,
+              branchName: "opensprint/validation/replaced",
+            },
+            runQualityGates: gates,
+          })
+        ).rejects.toThrow(/identity/);
+        expect(create).not.toHaveBeenCalled();
+        expect(gates).not.toHaveBeenCalled();
+        expect(
+          (
+            await execAsync("git rev-parse --verify MERGE_HEAD", { cwd: candidate.worktreePath })
+          ).stdout.trim()
+        ).toMatch(/^[a-f0-9]{40}$/);
+        await expect(fs.access(path.join(repoPath, "completed-feature.txt"))).rejects.toThrow();
+      } finally {
+        create.mockRestore();
+        await candidate.cleanup();
+      }
+    });
   });
 
   it("invokes merger for each sequential rebase conflict and still completes merge", async () => {
