@@ -74,11 +74,7 @@ import {
   type MergeQualityGateRunOptions,
 } from "./merge-coordinator.service.js";
 import { runMergeQualityGates as runMergeQualityGatesShared } from "./merge-quality-gate-runner.js";
-import {
-  localRecoveryController,
-  localRecoveryStore,
-  diagnoseLocalRecovery,
-} from "./local-recovery.service.js";
+import { localRecoveryController, diagnoseLocalRecovery } from "./local-recovery.service.js";
 import { executionAuthorityHash } from "./project-execution-profile.service.js";
 import { runMergeQualityGatesWithArtifact } from "./merge-verification.service.js";
 import {

@@ -743,12 +743,14 @@ export class FailureHandlerService {
           block_reason: "Local validation recovery",
           extra: {
             local_recovery_incident_id: recoveryId,
-            last_execution_summary: {
+            last_execution_summary: buildTaskLastExecutionSummary({
               attempt: slot.attempt,
               outcome: "blocked",
               phase: slot.phase,
               summary: `Validation paused; completed work retained. ${redactSecretsForUserDisplay(reason)}`,
-            },
+              failureType: "environment_setup",
+              blockReason: "Local validation recovery",
+            }),
           },
         });
       } catch (error) {
@@ -759,6 +761,24 @@ export class FailureHandlerService {
         return;
       }
       if (slot.agent.cancelled || state.slots.get(task.id) !== slot) return;
+      fireAndForget(
+        eventLogService.append(repoPath, {
+          timestamp: new Date().toISOString(),
+          projectId,
+          taskId: task.id,
+          event: "task.blocked",
+          data: {
+            attempt: slot.attempt,
+            phase: slot.phase,
+            failureType: "environment_setup",
+            blockReason: "Local validation recovery",
+            summary: `Validation paused; completed work retained. ${redactSecretsForUserDisplay(reason)}`,
+            nextAction: "Resolve the retained execution incident",
+            recoveryIncidentId: recoveryId,
+          },
+        }),
+        "failure-handler:local-recovery-held"
+      );
       this.host.removeSlot(state, task.id);
       await this.host.taskStore.setCumulativeAttempts(projectId, task.id, slot.attempt, {
         currentLabels: (task.labels ?? []) as string[],

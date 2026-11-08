@@ -21,6 +21,10 @@ import { initAppDb } from "../db/app-db.js";
 import { LocalRecoveryController } from "../services/local-recovery-controller.js";
 import { LocalRecoveryStore } from "../services/local-recovery-store.js";
 import { executionAuthorityHash } from "../services/project-execution-profile.service.js";
+import { parseTaskLastExecutionSummary } from "../services/task-execution-summary.js";
+import { TaskExecutionDiagnosticsService } from "../services/task-execution-diagnostics.service.js";
+import { taskStore } from "../services/task-store.service.js";
+import { ProjectService } from "../services/project.service.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -885,6 +889,129 @@ describe("OrchestratorService (slot-based model)", () => {
       vi.spyOn(orchestrator, "nudge").mockImplementation(() => {});
       return { task, worktreePath, branchName, assignment };
     }
+
+    it("persists a parseable held summary and a blocked attempt event for retained work", async () => {
+      const db = await initAppDb("sqlite://:memory:");
+      const { TaskStoreService: PersistentTaskStore } = await vi.importActual<
+        typeof import("../services/task-store.service.js")
+      >("../services/task-store.service.js");
+      const persistentTasks = new PersistentTaskStore(await db.getClient());
+      await persistentTasks.init();
+      const created = await persistentTasks.create(
+        projectId,
+        "Retain completed coding after environment failure"
+      );
+      const active = await persistentTasks.update(projectId, created.id, { status: "in_progress" });
+      const fixture = await prepareRetainedWork(created.id);
+      Object.assign(fixture.task, active);
+      mockTaskStoreShow.mockImplementation((pid, id) => persistentTasks.show(pid, id));
+      mockTaskStoreUpdate.mockImplementation((pid, id, update) =>
+        persistentTasks.update(pid, id, update)
+      );
+      vi.spyOn(taskStore, "runWrite").mockImplementation((fn) => persistentTasks.runWrite(fn));
+      vi.spyOn(taskStore, "getDb").mockImplementation(() => persistentTasks.getDb());
+      mockGetProject.mockResolvedValue({ id: projectId, repoPath });
+      mockGetProjectByRepoPath.mockResolvedValue({ id: projectId, repoPath });
+      const store = new LocalRecoveryStore(() => db.getClient());
+      const controller = new LocalRecoveryController(store, {
+        capture: async () => ({
+          authorityHash: executionAuthorityHash(toolchainProfile),
+          contextHash: "retained-context",
+          head,
+          cwd: fixture.worktreePath,
+          inputs: [],
+        }),
+      });
+      orchestrator.setLocalRecoveryController(controller);
+      orchestrator.setMergeQualityGateRunner(
+        vi.fn().mockResolvedValue({
+          command: "project-verify",
+          reason: "Required runtime is unavailable",
+          output: "Fixture execution environment cannot run the configured check",
+          category: "environment_setup",
+          classificationReason: "node_npm_engine_mismatch",
+        })
+      );
+      const internal = orchestrator as unknown as {
+        getState(projectId: string): {
+          slots: Map<string, { worktreePath: string | null; agent: { startedAt: string } }>;
+        };
+        createSlot(
+          taskId: string,
+          title: string,
+          branch: string,
+          attempt: number
+        ): { worktreePath: string | null; agent: { startedAt: string } };
+        handleCodingDone(
+          projectId: string,
+          repoPath: string,
+          task: typeof fixture.task,
+          branch: string,
+          code: number
+        ): Promise<void>;
+      };
+      const slot = internal.createSlot(fixture.task.id, fixture.task.title, fixture.branchName, 1);
+      slot.worktreePath = fixture.worktreePath;
+      slot.agent.startedAt = new Date().toISOString();
+      internal.getState(projectId).slots.set(fixture.task.id, slot);
+      try {
+        await orchestrator.pinValidationAuthority(
+          projectId,
+          fixture.task as never,
+          1,
+          toolchainProfile
+        );
+        await internal.handleCodingDone(projectId, repoPath, fixture.task, fixture.branchName, 0);
+        const blocked = await persistentTasks.show(projectId, fixture.task.id);
+        expect(blocked.status).toBe("blocked");
+        const summary = parseTaskLastExecutionSummary(blocked.last_execution_summary);
+        expect(summary).toMatchObject({
+          attempt: 1,
+          outcome: "blocked",
+          phase: "coding",
+          failureType: "environment_setup",
+          blockReason: "Local validation recovery",
+          summary: expect.stringContaining("completed work retained"),
+        });
+        expect(Number.isFinite(Date.parse(summary!.at))).toBe(true);
+        await vi.waitFor(async () => {
+          expect(await eventLogService.readForTask(repoPath, fixture.task.id)).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                event: "task.blocked",
+                taskId: fixture.task.id,
+                data: expect.objectContaining({
+                  attempt: 1,
+                  failureType: "environment_setup",
+                  summary: expect.stringContaining("completed work retained"),
+                }),
+              }),
+            ])
+          );
+        });
+        const diagnostics = await new TaskExecutionDiagnosticsService(
+          new ProjectService(),
+          taskStore,
+          mockSessionManager
+        ).getDiagnostics(projectId, fixture.task.id);
+        expect(diagnostics.attempts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              attempt: 1,
+              finalOutcome: "blocked",
+              finalSummary: expect.stringContaining("completed work retained"),
+            }),
+          ])
+        );
+        expect(internal.getState(projectId).slots.has(fixture.task.id)).toBe(false);
+        expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
+        expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+      } finally {
+        await controller.cancelTask(projectId, fixture.task.id);
+        internal.getState(projectId).slots.delete(fixture.task.id);
+        await db.close();
+      }
+    });
 
     it("suspends post-coding validation in the real controller and resumes without another coder", async () => {
       const db = await initAppDb("sqlite://:memory:");

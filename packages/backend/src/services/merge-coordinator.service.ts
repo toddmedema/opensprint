@@ -2511,6 +2511,17 @@ export class MergeCoordinatorService {
           expectedStatus: "in_progress",
           assignee: "",
           block_reason: "Local validation recovery",
+          extra: {
+            local_recovery_incident_id: retainedFailure.recoveryIncidentId,
+            last_execution_summary: buildTaskLastExecutionSummary({
+              attempt: slot?.attempt ?? 0,
+              outcome: "blocked",
+              phase: "merge",
+              summary: `Validation paused; completed work retained. ${retainedFailure.reason}`,
+              failureType: "environment_setup",
+              blockReason: "Local validation recovery",
+            }),
+          },
         });
       } catch (error) {
         if ((error as { code?: string }).code === ErrorCodes.TASK_STATE_CHANGED) return;
@@ -2518,6 +2529,24 @@ export class MergeCoordinatorService {
       }
       if (slot?.agent.cancelled || this.host.getState(projectId).slots.get(task.id) !== slot)
         return;
+      fireAndForget(
+        eventLogService.append(repoPath, {
+          timestamp: new Date().toISOString(),
+          projectId,
+          taskId: task.id,
+          event: "task.blocked",
+          data: {
+            attempt: slot?.attempt ?? 0,
+            phase: "merge",
+            failureType: "environment_setup",
+            blockReason: "Local validation recovery",
+            summary: `Validation paused; completed work retained. ${retainedFailure.reason}`,
+            nextAction: "Resolve the retained execution incident",
+            recoveryIncidentId: retainedFailure.recoveryIncidentId,
+          },
+        }),
+        "merge-coordinator:local-recovery-held"
+      );
       if (this.host.suspendLocalValidation) this.host.suspendLocalValidation(projectId, task.id);
       else this.host.getState(projectId).slots.delete(task.id);
       this.host.nudge(projectId);
