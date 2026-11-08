@@ -25,6 +25,7 @@ import { parseTaskLastExecutionSummary } from "../services/task-execution-summar
 import { TaskExecutionDiagnosticsService } from "../services/task-execution-diagnostics.service.js";
 import { taskStore } from "../services/task-store.service.js";
 import { ProjectService } from "../services/project.service.js";
+import { runMergeQualityGates as runMergeQualityGatesShared } from "../services/merge-quality-gate-runner.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -891,6 +892,20 @@ describe("OrchestratorService (slot-based model)", () => {
     }
 
     it("persists a parseable held summary and a blocked attempt event for retained work", async () => {
+      const fixtureMocks = [
+        mockTaskStoreShow,
+        mockTaskStoreUpdate,
+        mockGetProject,
+        mockGetProjectByRepoPath,
+        mockGetSettings,
+        mockCaptureBranchDiff,
+        mockGetChangedFiles,
+        mockReadResult,
+        mockRunScopedTests,
+      ];
+      const priorImplementations = fixtureMocks.map((mock) => mock.getMockImplementation());
+      const priorRunWrite = taskStore.runWrite;
+      const priorGetDb = taskStore.getDb;
       const db = await initAppDb("sqlite://:memory:");
       const { TaskStoreService: PersistentTaskStore } = await vi.importActual<
         typeof import("../services/task-store.service.js")
@@ -908,8 +923,8 @@ describe("OrchestratorService (slot-based model)", () => {
       mockTaskStoreUpdate.mockImplementation((pid, id, update) =>
         persistentTasks.update(pid, id, update)
       );
-      vi.spyOn(taskStore, "runWrite").mockImplementation((fn) => persistentTasks.runWrite(fn));
-      vi.spyOn(taskStore, "getDb").mockImplementation(() => persistentTasks.getDb());
+      taskStore.runWrite = (fn) => persistentTasks.runWrite(fn);
+      taskStore.getDb = () => persistentTasks.getDb();
       mockGetProject.mockResolvedValue({ id: projectId, repoPath });
       mockGetProjectByRepoPath.mockResolvedValue({ id: projectId, repoPath });
       const store = new LocalRecoveryStore(() => db.getClient());
@@ -1007,9 +1022,22 @@ describe("OrchestratorService (slot-based model)", () => {
         expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
         expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
       } finally {
-        await controller.cancelTask(projectId, fixture.task.id);
-        internal.getState(projectId).slots.delete(fixture.task.id);
-        await db.close();
+        try {
+          await controller.cancelTask(projectId, fixture.task.id);
+          internal.getState(projectId).slots.delete(fixture.task.id);
+        } finally {
+          // clearAllMocks only clears call history. Restore every implementation
+          // before closing this fixture's database so later tests cannot use it.
+          taskStore.runWrite = priorRunWrite;
+          taskStore.getDb = priorGetDb;
+          fixtureMocks.forEach((mock, index) => {
+            mock.mockReset();
+            const implementation = priorImplementations[index];
+            if (implementation) mock.mockImplementation(implementation);
+          });
+          vi.mocked(orchestrator.nudge).mockRestore();
+          await db.close();
+        }
       }
     });
 
@@ -2200,7 +2228,7 @@ describe("OrchestratorService (slot-based model)", () => {
     });
   });
 
-  describe("runMergeQualityGates", () => {
+  describe("shared merge quality gate runner", () => {
     const taskId = "task-quality-gate";
     const branchName = "opensprint/task-quality-gate";
     const baseBranch = "main";
@@ -2258,14 +2286,22 @@ describe("OrchestratorService (slot-based model)", () => {
     }
 
     const runMergeQualityGates = () =>
-      orchestrator.runMergeQualityGates({
-        projectId,
-        repoPath,
-        worktreePath,
-        taskId,
-        branchName,
-        baseBranch,
-      });
+      // These contracts describe the shared runner's classification and legacy
+      // repair path. Controller recovery is exercised above with real persistence.
+      runMergeQualityGatesShared(
+        {
+          projectId,
+          repoPath,
+          worktreePath,
+          taskId,
+          branchName,
+          baseBranch,
+        },
+        {
+          runCommand: mockRunCommand,
+          symlinkNodeModules: mockSymlinkNodeModules,
+        }
+      );
 
     it("does not auto-repair when failure has no env fingerprint", async () => {
       const previousNodeEnv = process.env.NODE_ENV;

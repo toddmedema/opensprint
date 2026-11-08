@@ -3516,7 +3516,8 @@ export class OrchestratorService {
     const assignment = await this.readAssignmentForRun(checkpoint.worktreePath, taskId);
     if (
       !assignment ||
-      assignment.worktreePath !== checkpoint.worktreePath ||
+      (await fs.realpath(assignment.worktreePath).catch(() => null)) !==
+        (await fs.realpath(checkpoint.worktreePath).catch(() => null)) ||
       assignment.branchName !== checkpoint.branchName ||
       assignment.attempt !== checkpoint.attempt
     )
