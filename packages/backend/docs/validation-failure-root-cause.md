@@ -6,9 +6,9 @@ Local records and personal filesystem paths are deliberately not attached.
 
 ## What failed
 
-The affected project's 12 failed coding/review sessions on November 6–8 involved
-three tasks. Count sessions once, rather than counting `task.failed`, `task.requeued`,
-and `task.blocked` as separate failures for the same attempt.
+The snapshot through 2026-11-08 11:26 UTC contained 12 failed coding/review sessions
+on November 6–8 involving three tasks. Count sessions once, rather than counting
+`task.failed`, `task.requeued`, and `task.blocked` as separate failures for the same attempt.
 
 | Observed signature                                                        | Failed sessions | Finding                                                                                                                                       |
 | ------------------------------------------------------------------------- | --------------: | --------------------------------------------------------------------------------------------------------------------------------------------- |
