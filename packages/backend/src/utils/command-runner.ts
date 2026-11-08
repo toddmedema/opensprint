@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { normalizeSpawnEnvPath } from "./path-env.js";
 import { agentProcessEnvironment } from "./agent-process-env.js";
+import { projectNodeEnvironment } from "./project-node-runtime.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const KILL_GRACE_MS = 5_000;
@@ -115,20 +116,28 @@ export function commandSpecToString(spec: CommandSpec): string {
 
 export function resolveCommandExecutable(
   command: string,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  cwd?: string
 ): string | null {
-  const normalizedEnv = normalizeSpawnEnvPath(env);
-  return resolvePathCandidate(command, normalizedEnv);
+  const normalizedEnv = normalizeSpawnEnvPath(agentProcessEnvironment(env));
+  return resolvePathCandidate(
+    command,
+    cwd ? projectNodeEnvironment(command, cwd, normalizedEnv) : normalizedEnv
+  );
 }
 
 export async function runCommand(
   spec: CommandSpec,
   options: CommandRunOptions
 ): Promise<CommandRunResult> {
-  const env = agentProcessEnvironment(
-    normalizeSpawnEnvPath({ ...process.env, ...(options.env ?? {}) })
+  const env = projectNodeEnvironment(
+    spec.command,
+    options.cwd,
+    agentProcessEnvironment(normalizeSpawnEnvPath({ ...process.env, ...(options.env ?? {}) }))
   );
-  const executable = resolveCommandExecutable(spec.command, env);
+  // Do not re-normalize PATH after selecting the project's Node: NVM's newest
+  // version may be incompatible with the declared engine.
+  const executable = resolvePathCandidate(spec.command, env);
   const cwd = options.cwd;
 
   if (!executable) {
@@ -153,12 +162,30 @@ export async function runCommand(
 
     let stdoutBytes = 0;
     let stderrBytes = 0;
+    const signalTree = (signal: "SIGTERM" | "SIGKILL") => {
+      if (process.platform !== "win32" && child.pid != null) {
+        try {
+          process.kill(-child.pid, signal);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== "ESRCH") child.kill(signal);
+        }
+      } else if (child.pid != null && process.platform === "win32") {
+        // npm and shell wrappers have descendants that child.kill() cannot stop.
+        const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        killer.on("error", () => child.kill(signal));
+      } else {
+        child.kill(signal);
+      }
+    };
     const requestTermination = () => {
       if (terminationRequested || settled) return;
       terminationRequested = true;
-      child.kill("SIGTERM");
+      signalTree("SIGTERM");
       killTimer = setTimeout(() => {
-        child.kill("SIGKILL");
+        signalTree("SIGKILL");
       }, KILL_GRACE_MS);
     };
     const retainChunk = (chunk: string, used: number, limit: number | undefined) => {
@@ -181,6 +208,8 @@ export async function runCommand(
       cwd,
       env,
       shell: false,
+      // Own the group so cancellation reaches npm's shells, test runners and workers.
+      detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -196,6 +225,11 @@ export async function runCommand(
       settled = true;
       clearTimeout(timeout);
       if (killTimer) clearTimeout(killTimer);
+      // The wrapper can close before children that ignore SIGTERM. Do not cancel
+      // escalation while those children still own validation slots or file handles.
+      if (terminationRequested && child.pid != null && process.platform !== "win32") {
+        signalTree("SIGKILL");
+      }
       handler();
     };
 
