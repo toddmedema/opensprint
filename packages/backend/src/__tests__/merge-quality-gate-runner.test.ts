@@ -1051,10 +1051,11 @@ src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Hea
     );
     const runCommand = vi.fn(async (spec, options) => {
       if (commandLabel(spec) === "npm run test") {
+        // Catch missing gate env even when this regression itself runs in CI.
         return runRealCommand(spec, {
           ...options,
           timeout: 2000,
-          env: { ...options.env, PATH: process.env.PATH },
+          env: { CI: "false", ...options.env, PATH: process.env.PATH },
         });
       }
       return makeCommandResult(spec, options.cwd);
