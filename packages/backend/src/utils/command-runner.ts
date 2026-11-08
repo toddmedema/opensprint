@@ -162,12 +162,30 @@ export async function runCommand(
 
     let stdoutBytes = 0;
     let stderrBytes = 0;
+    const signalTree = (signal: "SIGTERM" | "SIGKILL") => {
+      if (process.platform !== "win32" && child.pid != null) {
+        try {
+          process.kill(-child.pid, signal);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== "ESRCH") child.kill(signal);
+        }
+      } else if (child.pid != null && process.platform === "win32") {
+        // npm and shell wrappers have descendants that child.kill() cannot stop.
+        const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        killer.on("error", () => child.kill(signal));
+      } else {
+        child.kill(signal);
+      }
+    };
     const requestTermination = () => {
       if (terminationRequested || settled) return;
       terminationRequested = true;
-      child.kill("SIGTERM");
+      signalTree("SIGTERM");
       killTimer = setTimeout(() => {
-        child.kill("SIGKILL");
+        signalTree("SIGKILL");
       }, KILL_GRACE_MS);
     };
     const retainChunk = (chunk: string, used: number, limit: number | undefined) => {
@@ -190,6 +208,8 @@ export async function runCommand(
       cwd,
       env,
       shell: false,
+      // Own the group so cancellation reaches npm's shells, test runners and workers.
+      detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -205,6 +225,11 @@ export async function runCommand(
       settled = true;
       clearTimeout(timeout);
       if (killTimer) clearTimeout(killTimer);
+      // The wrapper can close before children that ignore SIGTERM. Do not cancel
+      // escalation while those children still own validation slots or file handles.
+      if (terminationRequested && child.pid != null && process.platform !== "win32") {
+        signalTree("SIGKILL");
+      }
       handler();
     };
 
