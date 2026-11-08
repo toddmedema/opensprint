@@ -4,6 +4,8 @@ The controller suspends a failing server-side validation call while keeping comp
 assignment, its phase result and any finished reviews. The caller continues from that validation
 boundary when the original gates pass; no new coder is needed for a recoverable execution fault.
 Ordinary compiler, lint and missing-source failures retain the existing coding/review behavior.
+Unclassified failures hold completed work when diagnosis cannot distinguish an execution fault from a
+code defect; a diagnosis of a concrete failed code check can return to the existing code-fix path.
 
 ## Execution contract
 
@@ -49,7 +51,8 @@ secret-like paths, binary, missing and oversized files are unavailable.
 Verified bindings prepend their installed directories for nested processes too. Without that declaration,
 discovery can bind only the configured commands’ direct executables.
 
-The controller accepts only retry, dependency repair, wait, escalation, or an installed runtime
+The controller accepts only retry, dependency repair, wait, escalation, classification of a failed code
+check, or an installed runtime
 binding. A binding must select an enumerated executable for an already declared tool and cite a
 specific semver constraint on a line naming that tool in immutable base evidence. The server probes
 `--version`, requires an unambiguous complete version satisfying that constraint, then reruns the

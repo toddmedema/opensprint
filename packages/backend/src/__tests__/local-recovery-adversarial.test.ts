@@ -260,6 +260,56 @@ describe("local recovery adversarial contracts", () => {
     expect(await store.recipe(options.projectId, profile.contextHash)).toBeUndefined();
   });
 
+  it("holds an unfamiliar failure after escalation and retains completed work without another validation attempt", async () => {
+    const source = path.join(workspace, "completed-feature.txt");
+    await fs.writeFile(source, "Completed coding must survive an unknown execution fault\n");
+    const validate = vi.fn(async () => unknownFailure());
+    const diagnose = vi.fn(async () => "escalate" as const);
+    const recovery = controller();
+    const held = await recovery.run({ ...options, validate, diagnose });
+    expect(held).toMatchObject({
+      preserveWork: true,
+      category: "environment_setup",
+      classificationReason: "local_recovery_held",
+      recoveryIncidentId: expect.any(String),
+    });
+    expect((await store.get(options.projectId, await fs.realpath(workspace)))?.state).toBe("held");
+    expect(await store.retained(options.projectId)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ taskId: options.taskId })])
+    );
+    expect(await recovery.run({ ...options, validate, diagnose })).toMatchObject({
+      preserveWork: true,
+      recoveryIncidentId: held!.recoveryIncidentId,
+    });
+    expect(validate).toHaveBeenCalledOnce();
+    expect(diagnose).toHaveBeenCalledOnce();
+    expect(await fs.readFile(source, "utf8")).toContain("Completed coding must survive");
+    expect(await store.recipe(options.projectId, profile.contextHash)).toBeUndefined();
+    expect(await store.executionProfile(options.projectId, profile.contextHash)).toBeUndefined();
+  });
+
+  it("routes an unfamiliar check diagnosed as a code failure without promoting verification or changing the failed check", async () => {
+    const failure = {
+      ...unknownFailure(),
+      reason: "The project-specific assertion rejected the implemented behavior",
+      output: "Account balance should equal 5, received 4 at custom checker line 18",
+      firstErrorLine: "Account balance should equal 5, received 4",
+      exitCode: 1,
+    };
+    const validate = vi.fn(async () => failure);
+    const diagnose = vi.fn(async () => "code_failure" as const);
+    const result = await controller().run({ ...options, validate, diagnose });
+    expect(result).toBe(failure);
+    expect(result?.preserveWork).toBeUndefined();
+    expect(validate).toHaveBeenCalledOnce();
+    expect(diagnose).toHaveBeenCalledOnce();
+    expect((await store.get(options.projectId, await fs.realpath(workspace)))?.state).toBe(
+      "failed"
+    );
+    expect(await store.recipe(options.projectId, profile.contextHash)).toBeUndefined();
+    expect(await store.executionProfile(options.projectId, profile.contextHash)).toBeUndefined();
+  });
+
   it("uses an authorized readiness probe when diagnosis identifies an unfamiliar resource wait", async () => {
     let available = false;
     const pause = vi.fn(async () => {

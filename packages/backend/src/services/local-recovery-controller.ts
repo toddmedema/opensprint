@@ -22,7 +22,7 @@ import type {
 import { verifyRuntimeBinding } from "./local-runtime-binding.js";
 
 export type RecoveryCommandRunner = typeof runCommand;
-export type RecoveryDiagnosis = RecoveryRecipe | "wait" | "escalate";
+export type RecoveryDiagnosis = RecoveryRecipe | "wait" | "escalate" | "code_failure";
 export interface LocalRecoveryRequest extends MergeQualityGateRunOptions {
   requestId?: string;
   checkpoint?: Partial<import("./local-recovery-store.js").RecoveryCheckpoint>;
@@ -544,17 +544,12 @@ export class LocalRecoveryController {
           continue;
         }
         if (run.data.attempts >= budget.iterations || now() > (run.data.deadlineAt ?? 0)) {
-          await journal(
-            failure.category === "quality_gate" ? "failed" : "held",
-            "repair_budget_exhausted"
+          await journal("held", "repair_budget_exhausted");
+          return this.failure(
+            request,
+            "Local recovery exhausted its bounded attempts; completed work retained",
+            run
           );
-          return failure.category === "quality_gate"
-            ? failure
-            : this.failure(
-                request,
-                "Local recovery exhausted its bounded attempts; completed work retained",
-                run
-              );
         }
         let recipe = await this.store.recipe(
           request.projectId,
@@ -579,6 +574,10 @@ export class LocalRecoveryController {
             )
             .catch(() => "escalate" as const);
           await current();
+          if (diagnosis === "code_failure" && failure.category === "quality_gate") {
+            await journal("failed", "diagnosed_code_failure");
+            return failure;
+          }
           if (diagnosis === "wait" && resolved.resourceProbeCommand) {
             const held = await waitForResource(failure);
             if (held) return held;
@@ -604,17 +603,12 @@ export class LocalRecoveryController {
         )
           recipe = undefined;
         if (!recipe) {
-          await journal(
-            failure.category === "quality_gate" ? "failed" : "held",
-            "no_authorized_repair"
+          await journal("held", "no_authorized_repair");
+          return this.failure(
+            request,
+            "No verified local repair is authorized; completed work retained",
+            run
           );
-          return failure.category === "quality_gate"
-            ? failure
-            : this.failure(
-                request,
-                "No verified local repair is authorized; completed work retained",
-                run
-              );
         }
         await unchanged();
         run.data.attempts++;
