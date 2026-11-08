@@ -8,6 +8,14 @@ import type { RecoveryHost, GuppAssignment } from "./recovery.service.js";
 import type { StoredTask } from "./task-store.service.js";
 
 export interface OrchestratorRecoveryHost {
+  resumeRetainedLocalValidation?(
+    projectId: string,
+    repoPath: string,
+    taskId: string
+  ): Promise<boolean>;
+  getRetainedLocalRecoveryTasks?(
+    projectId: string
+  ): Promise<Array<{ taskId: string; checkpoint: { worktreePath: string; branchName: string } }>>;
   getSlottedTaskIds(projectId: string): string[];
   getActiveAgentIds(projectId: string): string[];
   getSlottedWorktreeKeys(projectId: string): string[];
@@ -44,6 +52,8 @@ export interface OrchestratorRecoveryHost {
 /** Build the RecoveryHost implementation used by RecoveryService from the orchestrator. */
 export function buildOrchestratorRecoveryHost(host: OrchestratorRecoveryHost): RecoveryHost {
   return {
+    getRetainedLocalRecoveryTasks: host.getRetainedLocalRecoveryTasks?.bind(host),
+    resumeRetainedLocalValidation: host.resumeRetainedLocalValidation?.bind(host),
     getSlottedTaskIds: (projectId) => host.getSlottedTaskIds(projectId),
     getActiveAgentIds: (projectId) => host.getActiveAgentIds(projectId),
     getSlottedWorktreeKeys: (projectId) => host.getSlottedWorktreeKeys(projectId),

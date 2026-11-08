@@ -27,6 +27,8 @@ export type FailureType =
   | "coding_failure";
 
 export interface RetryQualityGateDetail {
+  preserveWork?: boolean;
+  recoveryIncidentId?: string;
   command?: string | null;
   reason?: string | null;
   outputSnippet?: string | null;

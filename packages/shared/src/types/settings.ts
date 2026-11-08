@@ -527,6 +527,14 @@ export type DependencyStrategy = "npm" | "npm_ci_worktree" | "none" | "pnpm" | "
  * When omitted, backend defaults preserve current npm-based behavior.
  */
 export interface ToolchainProfile {
+  /** Additional runtime tools invoked by project wrappers; eligible for verified installed bindings. */
+  runtimeTools?: string[];
+  /** Relative validation directory inside the retained workspace. */
+  workingDirectory?: string;
+  /** Owner-configured environment for all validation/setup commands; never inferred from task output. */
+  executionEnvironment?: Record<string, string>;
+  /** Read-only, owner-declared readiness probe: exit zero when an external validation resource is available. */
+  resourceProbeCommand?: string;
   /** Ordered quality-gate commands to run before merge. */
   mergeQualityGateCommands?: string[];
   /**
@@ -1235,6 +1243,26 @@ function parseToolchainProfile(raw: unknown): ToolchainProfile | undefined {
         )
       : undefined;
   const profile: ToolchainProfile = {
+    ...(parseTrimmedStringArray(record.runtimeTools) && {
+      runtimeTools: parseTrimmedStringArray(record.runtimeTools),
+    }),
+    ...(typeof record.workingDirectory === "string" && {
+      workingDirectory: record.workingDirectory.trim(),
+    }),
+    ...(typeof record.resourceProbeCommand === "string" && {
+      resourceProbeCommand: record.resourceProbeCommand.trim(),
+    }),
+    ...(record.executionEnvironment != null &&
+    typeof record.executionEnvironment === "object" &&
+    !Array.isArray(record.executionEnvironment)
+      ? {
+          executionEnvironment: Object.fromEntries(
+            Object.entries(record.executionEnvironment as Record<string, unknown>)
+              .filter(([k, v]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k) && typeof v === "string")
+              .map(([k, v]) => [k, v as string])
+          ),
+        }
+      : {}),
     ...(mergeQualityGateCommands && { mergeQualityGateCommands }),
     ...(dependencyStrategy && { dependencyStrategy }),
     ...(typeof record.dependencyInstallCommand === "string" && {

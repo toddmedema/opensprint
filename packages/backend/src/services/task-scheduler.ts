@@ -3,6 +3,7 @@ import type { TaskStoreService, StoredTask } from "./task-store.service.js";
 import type { AgentSlot } from "./orchestrator.service.js";
 import { FileScopeAnalyzer, type FileScope } from "./file-scope-analyzer.js";
 import { createLogger } from "../utils/logger.js";
+import { isLocalRecoveryCapacityReleased } from "./local-recovery-capacity.js";
 
 const log = createLogger("task-scheduler");
 
@@ -38,7 +39,9 @@ export class TaskScheduler {
       unknownScopeStrategy?: UnknownScopeStrategy;
     }
   ): Promise<SchedulerResult[]> {
-    const slotsAvailable = maxSlots - activeSlots.size;
+    const slotsAvailable =
+      maxSlots -
+      [...activeSlots.values()].filter((s) => !isLocalRecoveryCapacityReleased(s)).length;
     if (slotsAvailable <= 0) return [];
     const unknownScopeStrategy = options?.unknownScopeStrategy ?? "conservative";
 

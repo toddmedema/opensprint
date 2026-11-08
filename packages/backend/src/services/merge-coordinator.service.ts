@@ -46,6 +46,7 @@ import { broadcastToProject } from "../websocket/index.js";
 import { broadcastAuthoritativeTaskUpdated } from "../task-store-events.js";
 import type { TimerRegistry } from "./timer-registry.js";
 import { createLogger } from "../utils/logger.js";
+import { ErrorCodes } from "../middleware/error-codes.js";
 import { appendCrashLog } from "../utils/crash-log.js";
 import { appendRuntimeTrace } from "../utils/runtime-trace.js";
 import { buildTaskLastExecutionSummary, compactExecutionText } from "./task-execution-summary.js";
@@ -136,6 +137,8 @@ const QUALITY_GATE_BLOCK_REASON = "Quality Gate Failure";
 type MergeFailureStage = "rebase_before_merge" | "merge_to_main" | "push_rebase" | "quality_gate";
 
 export interface MergeQualityGateRunOptions {
+  validationBranchName?: string;
+  skipEnvironmentRepair?: boolean;
   projectId: string;
   repoPath: string;
   worktreePath: string;
@@ -148,6 +151,8 @@ export interface MergeQualityGateRunOptions {
 }
 
 export interface MergeQualityGateFailure {
+  preserveWork?: boolean;
+  recoveryIncidentId?: string;
   command: string;
   reason: string;
   output: string;
@@ -191,7 +196,7 @@ export interface MergeSlot {
       | import("./merge-verification.service.js").MergeGateVerificationArtifact
       | null;
   };
-  agent: { outputLog: string[]; startedAt: string };
+  agent: { outputLog: string[]; startedAt: string; cancelled?: boolean };
 }
 
 interface CleanupTarget {
@@ -340,6 +345,7 @@ export interface MergeCoordinatorHost {
     }>;
   };
   transition(projectId: string, t: { to: "complete" | "fail"; taskId: string }): void;
+  suspendLocalValidation?(projectId: string, taskId: string): void;
   persistCounters(projectId: string, repoPath: string): Promise<void>;
   nudge(projectId: string): void;
 }
@@ -695,6 +701,7 @@ export class MergeCoordinatorService {
     const artifact = slot?.phaseResult.mergeGateArtifactTaskWorktree;
     if (artifact && options.validationWorkspace === "task_worktree") {
       const stillCurrent = await isTaskWorktreeMergeGateArtifactCurrent(this.host.branchManager, {
+        projectId: options.projectId,
         repoPath: options.repoPath,
         wtPath: options.worktreePath,
         baseBranch: options.baseBranch,
@@ -966,7 +973,12 @@ export class MergeCoordinatorService {
 
       try {
         workspace = await validationWorkspaceService
-          .createBaselineWorkspace(repoPath, baseBranch)
+          .createBaselineWorkspace(
+            repoPath,
+            baseBranch,
+            (await this.host.projectService.getSettings(projectId)).toolchainProfile,
+            true
+          )
           .catch((err) => {
             throw this.buildUnexpectedBaselineFailure(err);
           });
@@ -980,6 +992,8 @@ export class MergeCoordinatorService {
             baseBranch,
             validationWorkspace: "baseline",
             qualityGateProfile: DETERMINISTIC_MERGE_GATE_PROFILE,
+            toolchainProfile: (await this.host.projectService.getSettings(projectId))
+              .toolchainProfile,
           })) ?? null;
 
         if (!failure) {
@@ -1938,7 +1952,8 @@ export class MergeCoordinatorService {
     projectId: string,
     repoPath: string,
     task: StoredTask,
-    branchName: string
+    branchName: string,
+    retainedCandidate?: { worktreePath: string; branchName: string }
   ): Promise<void> {
     log.info("Starting merge and done flow", { taskId: task.id, branchName });
     const state = this.host.getState(projectId);
@@ -2075,16 +2090,17 @@ export class MergeCoordinatorService {
               "PR delivery requires a shared plan branch. Retry this task to prepare the plan branch."
             );
           }
-          await this.ensureMergeQualityGates({
-            projectId,
-            repoPath,
-            worktreePath: wtPath,
-            taskId: task.id,
-            branchName,
-            baseBranch,
-            validationWorkspace: "task_worktree",
-            toolchainProfile: settings.toolchainProfile,
-          });
+          if (!retainedCandidate)
+            await this.ensureMergeQualityGates({
+              projectId,
+              repoPath,
+              worktreePath: wtPath,
+              taskId: task.id,
+              branchName,
+              baseBranch,
+              validationWorkspace: "task_worktree",
+              toolchainProfile: settings.toolchainProfile,
+            });
           if (planFinished) {
             const epic = allIssuesForEpic.find((i) => i.id === epicId);
             const url = await withUngovernedPullRequestDelivery(projectId, () =>
@@ -2229,16 +2245,17 @@ export class MergeCoordinatorService {
               baseBranch,
             });
           }
-          await this.ensureMergeQualityGates({
-            projectId,
-            repoPath,
-            worktreePath: wtPath,
-            taskId: task.id,
-            branchName,
-            baseBranch,
-            validationWorkspace: "task_worktree",
-            toolchainProfile: settings.toolchainProfile,
-          });
+          if (!retainedCandidate)
+            await this.ensureMergeQualityGates({
+              projectId,
+              repoPath,
+              worktreePath: wtPath,
+              taskId: task.id,
+              branchName,
+              baseBranch,
+              validationWorkspace: "task_worktree",
+              toolchainProfile: settings.toolchainProfile,
+            });
           this.traceMergeLifecycle(
             "quality_gates_passed",
             projectId,
@@ -2264,6 +2281,8 @@ export class MergeCoordinatorService {
             taskTitle: task.title || task.id,
             baseBranch,
             qualityGateProfile: DETERMINISTIC_MERGE_GATE_PROFILE,
+            runQualityGates: this.host.runMergeQualityGates?.bind(this.host),
+            retainedCandidate,
           });
           this.traceMergeLifecycle(
             "queue_merge_succeeded",
@@ -2356,16 +2375,17 @@ export class MergeCoordinatorService {
             baseBranch,
           });
         }
-        await this.ensureMergeQualityGates({
-          projectId,
-          repoPath,
-          worktreePath: wtPath,
-          taskId: task.id,
-          branchName,
-          baseBranch,
-          validationWorkspace: "task_worktree",
-          toolchainProfile: settings.toolchainProfile,
-        });
+        if (!retainedCandidate)
+          await this.ensureMergeQualityGates({
+            projectId,
+            repoPath,
+            worktreePath: wtPath,
+            taskId: task.id,
+            branchName,
+            baseBranch,
+            validationWorkspace: "task_worktree",
+            toolchainProfile: settings.toolchainProfile,
+          });
         this.traceMergeLifecycle(
           "quality_gates_passed",
           projectId,
@@ -2391,6 +2411,8 @@ export class MergeCoordinatorService {
           taskTitle: task.title || task.id,
           baseBranch,
           qualityGateProfile: DETERMINISTIC_MERGE_GATE_PROFILE,
+          runQualityGates: this.host.runMergeQualityGates?.bind(this.host),
+          retainedCandidate,
         });
         this.traceMergeLifecycle(
           "queue_merge_succeeded",
@@ -2473,6 +2495,34 @@ export class MergeCoordinatorService {
     mergeErr: Error
   ): Promise<void> {
     const slot = this.host.getState(projectId).slots.get(task.id);
+    const retainedFailure = getQualityGateFailureDetailsFromMergeError(mergeErr);
+    if (retainedFailure?.preserveWork || retainedFailure?.recoveryIncidentId) {
+      // This is suspended validation of completed code, not a new coding attempt.
+      if (slot?.agent.cancelled) return;
+      const fresh = await this.host.taskStore.show(projectId, task.id);
+      if (
+        fresh.status !== "in_progress" ||
+        this.host.getState(projectId).slots.get(task.id) !== slot
+      )
+        return;
+      try {
+        await this.host.taskStore.update(projectId, task.id, {
+          status: "blocked",
+          expectedStatus: "in_progress",
+          assignee: "",
+          block_reason: "Local validation recovery",
+        });
+      } catch (error) {
+        if ((error as { code?: string }).code === ErrorCodes.TASK_STATE_CHANGED) return;
+        throw error;
+      }
+      if (slot?.agent.cancelled || this.host.getState(projectId).slots.get(task.id) !== slot)
+        return;
+      if (this.host.suspendLocalValidation) this.host.suspendLocalValidation(projectId, task.id);
+      else this.host.getState(projectId).slots.delete(task.id);
+      this.host.nudge(projectId);
+      return;
+    }
     const failedBranchName = slot?.branchName ?? `opensprint/${task.id}`;
     const stage =
       mergeErr instanceof MergeJobError

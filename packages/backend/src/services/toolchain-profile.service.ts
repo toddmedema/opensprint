@@ -16,6 +16,10 @@ export const DEFAULT_DEPENDENCY_CHANGE_PATHS = [
 const DEFAULT_DEPENDENCY_STRATEGY: DependencyStrategy = "npm";
 
 export interface ResolvedToolchainProfile {
+  runtimeTools: string[];
+  workingDirectory: string;
+  executionEnvironment: Record<string, string>;
+  resourceProbeCommand: string | null;
   mergeQualityGateCommands: string[];
   dependencyStrategy: DependencyStrategy;
   dependencyInstallCommand: string | null;
@@ -55,6 +59,12 @@ export function resolveToolchainProfile(
   const dependencyStrategy = profile?.dependencyStrategy ?? DEFAULT_DEPENDENCY_STRATEGY;
   const deterministicTestCommand = profile?.deterministicTestCommand?.trim() || "npm run test";
   return {
+    runtimeTools: [
+      ...new Set((profile?.runtimeTools ?? []).map((s) => s.trim()).filter(Boolean)),
+    ].sort(),
+    workingDirectory: profile?.workingDirectory?.trim() || ".",
+    executionEnvironment: { ...(profile?.executionEnvironment ?? {}) },
+    resourceProbeCommand: profile?.resourceProbeCommand?.trim() || null,
     mergeQualityGateCommands: normalizeCommands(profile?.mergeQualityGateCommands),
     dependencyStrategy,
     dependencyInstallCommand:
@@ -68,7 +78,12 @@ export function resolveToolchainProfile(
 }
 
 export function isNodeDependencyStrategy(strategy: DependencyStrategy): boolean {
-  return strategy === "npm" || strategy === "npm_ci_worktree" || strategy === "pnpm" || strategy === "yarn";
+  return (
+    strategy === "npm" ||
+    strategy === "npm_ci_worktree" ||
+    strategy === "pnpm" ||
+    strategy === "yarn"
+  );
 }
 
 /** When set, merge gates install dependencies with `npm ci` in the worktree instead of symlinking host `node_modules`. */

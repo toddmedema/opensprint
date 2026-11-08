@@ -85,6 +85,8 @@ export function toRetryQualityGateDetail(
   fallbackWorktreePath: string
 ): RetryQualityGateDetail {
   return {
+    recoveryIncidentId: failure.recoveryIncidentId,
+    preserveWork: failure.preserveWork,
     command: failure.command,
     reason: failure.reason?.trim().slice(0, 500) || "Unknown quality gate failure",
     outputSnippet:
@@ -173,6 +175,7 @@ export async function runTaskWorktreeMergeGatesMaybeDeduped(
   if (
     existing &&
     (await isTaskWorktreeMergeGateArtifactCurrent(deps.branchManager, {
+      projectId,
       repoPath,
       wtPath,
       baseBranch,
@@ -247,7 +250,9 @@ export async function ensureTaskWorktreeRebasedForMergeGates(
       const conflictedFiles = rebaseConflict.conflictedFiles;
       if (round > MAX_PRE_VALIDATION_REBASE_MERGER_ROUNDS) {
         await host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-          log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+          log.warn("rebase abort failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
         });
         await host.taskStore.setConflictFiles(projectId, task.id, conflictedFiles);
         await host.taskStore.setMergeStage(projectId, task.id, "rebase_before_merge");
@@ -288,7 +293,9 @@ export async function ensureTaskWorktreeRebasedForMergeGates(
       });
       if (!resolved) {
         await host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-          log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+          log.warn("rebase abort failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
         });
         await host.failureHandler.handleTaskFailure(
           projectId,
@@ -302,8 +309,8 @@ export async function ensureTaskWorktreeRebasedForMergeGates(
         return false;
       }
 
-      fireAndForget(eventLogService
-        .append(repoPath, {
+      fireAndForget(
+        eventLogService.append(repoPath, {
           timestamp: new Date().toISOString(),
           projectId,
           taskId: task.id,
@@ -316,7 +323,9 @@ export async function ensureTaskWorktreeRebasedForMergeGates(
             round,
             context: "pre_validation",
           },
-        }), "quality-gates:merge.resolved");
+        }),
+        "quality-gates:merge.resolved"
+      );
 
       try {
         await host.branchManager.rebaseContinue(wtPath);
@@ -341,7 +350,9 @@ export async function ensureTaskWorktreeRebasedForMergeGates(
             rebaseConflict = new RebaseConflictError(d.conflictedFiles);
           } else {
             await host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-              log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+              log.warn("rebase abort failed", {
+                err: err instanceof Error ? err.message : String(err),
+              });
             });
             await host.failureHandler.handleTaskFailure(
               projectId,
@@ -360,7 +371,9 @@ export async function ensureTaskWorktreeRebasedForMergeGates(
             rebaseConflict = new RebaseConflictError(cf);
           } else {
             await host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-              log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+              log.warn("rebase abort failed", {
+                err: err instanceof Error ? err.message : String(err),
+              });
             });
             throw continueErr;
           }

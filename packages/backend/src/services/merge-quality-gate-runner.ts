@@ -78,6 +78,10 @@ export function looksLikeNodeEngineQualityGateFailure(text: string): boolean {
 }
 
 export interface MergeQualityGateRunOptions {
+  /** Server-owned retained candidate identity for restart continuation. */
+  validationBranchName?: string;
+  /** Server-owned recovery controller supplies all repair/ownership policy. */
+  skipEnvironmentRepair?: boolean;
   projectId: string;
   repoPath: string;
   worktreePath: string;
@@ -90,6 +94,8 @@ export interface MergeQualityGateRunOptions {
 }
 
 export interface MergeQualityGateFailure {
+  preserveWork?: boolean;
+  recoveryIncidentId?: string;
   command: string;
   reason: string;
   output: string;
@@ -353,12 +359,53 @@ async function runDependencyHealthCheck(
   }
 }
 
-function parseCommandSpec(command: string): CommandSpec {
-  const parts = command
-    .trim()
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
+export function parseCommandSpec(command: string): CommandSpec {
+  const parts: string[] = [];
+  let word = "",
+    quote = "",
+    escaped = false,
+    started = false;
+  for (const char of command.trim()) {
+    if (escaped) {
+      word += char;
+      escaped = false;
+      started = true;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      escaped = true;
+      started = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = "";
+      else word += char;
+      started = true;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      started = true;
+      continue;
+    }
+    if (/[|&;<>`$\r\n]/.test(char))
+      throw new Error(
+        "Shell operators require an explicit shell command; refusing to skip part of a validation command"
+      );
+    if (/\s/.test(char)) {
+      if (started) {
+        parts.push(word);
+        word = "";
+        started = false;
+      }
+      continue;
+    }
+    word += char;
+    started = true;
+  }
+  if (quote || escaped) throw new Error("Unterminated quote or escape in validation command");
+  if (started) parts.push(word);
+  if (!parts.length) throw new Error("Validation command is empty");
   return {
     command: parts[0] ?? "",
     args: parts.slice(1),
@@ -961,8 +1008,22 @@ async function prepareGateCommand(
   validationWorkspace: MergeQualityGateFailure["validationWorkspace"],
   runCommand: NonNullable<MergeQualityGateRunnerDeps["runCommand"]>
 ): Promise<PreparedGateCommandResult> {
-  let cwd = await resolveMergeGateFilesystemRoot(options.worktreePath);
   const resolvedProfile = resolveToolchainProfile(options.toolchainProfile);
+  const root = await resolveMergeGateFilesystemRoot(options.worktreePath);
+  let cwd = await resolveMergeGateFilesystemRoot(
+    path.resolve(root, resolvedProfile.workingDirectory)
+  );
+  const relative = path.relative(root, cwd);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+    return {
+      failure: buildFailure({
+        command,
+        reason: "Validation directory escapes retained workspace",
+        category: "environment_setup",
+        worktreePath: root,
+        validationWorkspace,
+      }),
+    };
   const workspaceFailure = await ensurePathExists(cwd, `Validation workspace is missing: ${cwd}`, {
     command,
     validationWorkspace,
@@ -975,12 +1036,22 @@ async function prepareGateCommand(
   const shouldRunNodePrechecks =
     npmGate && isNodeDependencyStrategy(resolvedProfile.dependencyStrategy);
   let packageScripts = new Set<string>();
-  if (shouldRunNodePrechecks) {
+  if (npmGate) {
     let packageJsonPath = path.join(cwd, "package.json");
     try {
       await fs.access(packageJsonPath);
     } catch {
       const missingAtInput = packageJsonPath;
+      if (resolvedProfile.workingDirectory !== ".")
+        return {
+          failure: buildFailure({
+            command,
+            reason: `Selected validation directory package.json is missing: ${missingAtInput}`,
+            category: "environment_setup",
+            worktreePath: cwd,
+            validationWorkspace,
+          }),
+        };
       try {
         const topLevelResult = await runCommand(
           {
@@ -1540,7 +1611,11 @@ async function executePreparedGate(
       cwd,
       timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
       // CRA/Jest and Vitest otherwise enter watch mode even with stdin closed.
-      env: { ...commandEnv, CI: "true" },
+      env: {
+        ...resolveToolchainProfile(options.toolchainProfile).executionEnvironment,
+        ...commandEnv,
+        CI: "true",
+      },
     });
     return null;
   } catch (err) {
@@ -1638,6 +1713,7 @@ export async function runMergeQualityGates(
     gateOptions.validationWorkspace ?? (normWt === normRepo ? "repo_root" : "task_worktree");
 
   if (
+    !options.skipEnvironmentRepair &&
     usesHermeticWorktreeNodeModules(resolvedProfileEarly.dependencyStrategy) &&
     (gateValidationWorkspace === "task_worktree" || gateValidationWorkspace === "repo_root")
   ) {
@@ -1659,7 +1735,8 @@ export async function runMergeQualityGates(
   const healthCheck = await validationService.verifyWorkspaceHealth(
     normRepo,
     normWt,
-    gateOptions.validationWorkspace ?? (normWt === normRepo ? "repo_root" : "task_worktree")
+    gateOptions.validationWorkspace ?? (normWt === normRepo ? "repo_root" : "task_worktree"),
+    gateOptions.toolchainProfile
   );
   if (!healthCheck.healthy) {
     log.warn("Workspace health check failed before running quality gates", {
@@ -1749,6 +1826,7 @@ export async function runMergeQualityGates(
         );
       }
       if (
+        options.skipEnvironmentRepair ||
         !isNodeDependencyStrategy(resolvedProfile.dependencyStrategy) ||
         parseCommandSpec(command).command !== "npm"
       ) {
@@ -1846,6 +1924,7 @@ export async function runMergeQualityGates(
       );
     }
     if (
+      options.skipEnvironmentRepair ||
       initialFailure.classificationReason === "validation_resource_busy" ||
       initialFailure.classificationReason === "checkout_reserved" ||
       !isNodeDependencyStrategy(resolvedProfile.dependencyStrategy) ||

@@ -135,7 +135,7 @@ type FailureDiagnosticDetail = {
 export interface FailureHandlerHost {
   getState(projectId: string): {
     slots: Map<string, FailureSlot>;
-    status: { totalFailed: number; queueDepth: number };
+    status: { totalFailed: number; queueDepth: number; activeTasks: unknown };
   };
   taskStore: {
     comment(projectId: string, taskId: string, text: string): Promise<void>;
@@ -217,7 +217,12 @@ export interface FailureSlot {
     validationCommand?: string | null;
     qualityGateDetail?: RetryQualityGateDetail | null;
   };
-  agent: { outputLog: string[]; startedAt: string; killedDueToTimeout: boolean };
+  agent: {
+    outputLog: string[];
+    startedAt: string;
+    killedDueToTimeout: boolean;
+    cancelled?: boolean;
+  };
   /** Set when slot was created from dispatch (retry context from prior failure). */
   retryContext?: RetryContext;
   /** Agent config used for current active attempt; avoids stat key mismatches on completion. */
@@ -722,7 +727,52 @@ export class FailureHandlerService {
       log.warn("handleTaskFailure: no slot found for task", { taskId: task.id });
       return;
     }
+    // A stopped attempt can complete validation after cancellation was requested.
+    // Its late result has no authority to change task state or start another coder.
+    if (slot.agent.cancelled) return;
     const cumulativeAttempts = slot.attempt;
+    const recoveryId = slot.phaseResult.qualityGateDetail?.recoveryIncidentId;
+    if (recoveryId || slot.phaseResult.qualityGateDetail?.preserveWork) {
+      // A held environment incident is not a failed coding attempt. Preserve the
+      // completed result, assignment, branch and worktree for explicit resumption.
+      try {
+        await this.host.taskStore.update(projectId, task.id, {
+          status: "blocked",
+          expectedStatus: "in_progress",
+          assignee: "",
+          block_reason: "Local validation recovery",
+          extra: {
+            local_recovery_incident_id: recoveryId,
+            last_execution_summary: {
+              attempt: slot.attempt,
+              outcome: "blocked",
+              phase: slot.phase,
+              summary: `Validation paused; completed work retained. ${redactSecretsForUserDisplay(reason)}`,
+            },
+          },
+        });
+      } catch (error) {
+        if ((error as { code?: string }).code !== ErrorCodes.TASK_STATE_CHANGED) throw error;
+        // The user or a replacement attempt already changed the task. Retain the
+        // incident, but do not overwrite that newer decision or emit a blocked event.
+        if (state.slots.get(task.id) === slot) this.host.removeSlot(state, task.id);
+        return;
+      }
+      if (slot.agent.cancelled || state.slots.get(task.id) !== slot) return;
+      this.host.removeSlot(state, task.id);
+      await this.host.taskStore.setCumulativeAttempts(projectId, task.id, slot.attempt, {
+        currentLabels: (task.labels ?? []) as string[],
+      });
+      await this.host.persistCounters(projectId, repoPath);
+      broadcastToProject(projectId, {
+        type: "task.blocked",
+        taskId: task.id,
+        reason: `Validation paused; completed work retained. ${redactSecretsForUserDisplay(reason)}`,
+        cumulativeAttempts: slot.attempt,
+      } as ServerEvent);
+      this.host.nudge(projectId);
+      return;
+    }
     const wtPath = slot.worktreePath;
     const isInfraFailure = INFRA_FAILURE_TYPES.includes(failureType);
     const effectiveReason =
@@ -915,8 +965,7 @@ export class FailureHandlerService {
 
     const qgDetail = slot.phaseResult.qualityGateDetail;
     const gateRuntimeEventFields =
-      qgDetail &&
-      (failureType === "merge_quality_gate" || failureType === "environment_setup")
+      qgDetail && (failureType === "merge_quality_gate" || failureType === "environment_setup")
         ? {
             ...(qgDetail.gateNodeVersion != null && { gateNodeVersion: qgDetail.gateNodeVersion }),
             ...(qgDetail.gateNpmVersion != null && { gateNpmVersion: qgDetail.gateNpmVersion }),
@@ -1170,25 +1219,25 @@ export class FailureHandlerService {
       } catch (err) {
         log.warn("Failed to reopen task after API-blocked no_result failure", { err });
       }
-    fireAndForget(
-      eventLogService.append(repoPath, {
-        timestamp: new Date().toISOString(),
-        projectId,
-        taskId: task.id,
-        event: "task.requeued",
-        data: {
-          attempt: cumulativeAttempts,
-          phase: slot.phase,
-          failureType,
-          model: agentConfig.model ?? null,
-          summary: retrySummary.summary,
-          nextAction,
-          policyDecision: "reopen" as FailurePolicyDecision,
-          ...commonFailureContext,
-        },
-      }),
-      "failure-handler:task.requeued"
-    );
+      fireAndForget(
+        eventLogService.append(repoPath, {
+          timestamp: new Date().toISOString(),
+          projectId,
+          taskId: task.id,
+          event: "task.requeued",
+          data: {
+            attempt: cumulativeAttempts,
+            phase: slot.phase,
+            failureType,
+            model: agentConfig.model ?? null,
+            summary: retrySummary.summary,
+            nextAction,
+            policyDecision: "reopen" as FailurePolicyDecision,
+            ...commonFailureContext,
+          },
+        }),
+        "failure-handler:task.requeued"
+      );
       this.host.transition(projectId, { to: "fail", taskId: task.id });
       await this.host.persistCounters(projectId, repoPath);
       broadcastToProject(projectId, {
@@ -1301,22 +1350,22 @@ export class FailureHandlerService {
           diagnostics: commonFailureContext,
         }
       );
-    fireAndForget(
-      eventLogService.append(repoPath, {
-        timestamp: new Date().toISOString(),
-        projectId,
-        taskId: task.id,
-        event: "task.runaway_detected",
-        data: {
-          attempt: cumulativeAttempts,
-          phase: slot.phase,
-          failureType,
-          reason: runawayPolicy.nextActionOverride ?? "runaway_retry_pattern",
-          signature: failureSignature,
-        },
-      }),
-      "failure-handler:task.runaway_detected"
-    );
+      fireAndForget(
+        eventLogService.append(repoPath, {
+          timestamp: new Date().toISOString(),
+          projectId,
+          taskId: task.id,
+          event: "task.runaway_detected",
+          data: {
+            attempt: cumulativeAttempts,
+            phase: slot.phase,
+            failureType,
+            reason: runawayPolicy.nextActionOverride ?? "runaway_retry_pattern",
+            signature: failureSignature,
+          },
+        }),
+        "failure-handler:task.runaway_detected"
+      );
       return;
     }
 
@@ -1610,7 +1659,9 @@ export class FailureHandlerService {
       await this.host.branchManager.revertAndReturnToMain(repoPath, branchName, baseBranch);
       slot.worktreePath = null;
       await Promise.resolve(worktreeLeaseService.forceRelease(worktreeKey)).catch((err) => {
-        log.warn("Failed to release worktree lease after branch revert", { err: err instanceof Error ? err.message : String(err) });
+        log.warn("Failed to release worktree lease after branch revert", {
+          err: err instanceof Error ? err.message : String(err),
+        });
       });
       return;
     }
@@ -1632,11 +1683,14 @@ export class FailureHandlerService {
       if (!worktreeRemovalAttempted || worktreeRemovalOk) {
         await this.host.branchManager.deleteBranch(repoPath, branchName);
       } else {
-        log.warn("Skipping branch delete after worktree removal was blocked (demotion/failure cleanup)", {
-          taskId,
-          branchName,
-          worktreeKey,
-        });
+        log.warn(
+          "Skipping branch delete after worktree removal was blocked (demotion/failure cleanup)",
+          {
+            taskId,
+            branchName,
+            worktreeKey,
+          }
+        );
       }
     }
   }

@@ -71,6 +71,12 @@ const log = createLogger("phase-executor");
 const MAX_RETRY_PATH_REBASE_MERGER_ROUNDS = 12;
 
 export interface PhaseExecutorHost {
+  pinValidationAuthority?(
+    projectId: string,
+    task: StoredTask,
+    attempt: number,
+    profile?: import("@opensprint/shared").ToolchainProfile
+  ): Promise<void>;
   getState(projectId: string): {
     slots: Map<string, { agent: AgentRunState; timers: TimerRegistry } & AgentSlotLike>;
     status: { queueDepth: number };
@@ -764,6 +770,12 @@ export class PhaseExecutorService {
         baseBranch
       );
 
+      await this.host.pinValidationAuthority?.(
+        projectId,
+        task,
+        slot.attempt,
+        settings.toolchainProfile
+      );
       const assignment: TaskAssignmentLike = {
         taskId: task.id,
         projectId,

@@ -26,6 +26,8 @@ export const ErrorCodes = {
   NO_GATE_TASK: "NO_GATE_TASK",
   TASKS_IN_PROGRESS: "TASKS_IN_PROGRESS",
   TASKS_NOT_COMPLETE: "TASKS_NOT_COMPLETE",
+  /** A task changed state before a conditional update could be applied. */
+  TASK_STATE_CHANGED: "TASK_STATE_CHANGED",
   /** Cannot change assignee while task is in progress. */
   ASSIGNEE_LOCKED: "ASSIGNEE_LOCKED",
   NO_EPIC: "NO_EPIC",

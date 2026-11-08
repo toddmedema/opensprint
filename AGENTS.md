@@ -67,6 +67,21 @@ Congress mines immutable decisions independently of code changes and proposes ex
 
 Evaluate's on-demand automated QA uses the configured auditor agent and one isolated checkout of the configured base revision per selected code review perspective. Agents run checks with tool access, write the QA-specific result contract from their prompt, and never implement fixes or publish code. The server submits evidence-backed findings as ordinary Evaluate feedback. Capacity is released and checkouts are cleaned only after the runner reports exit; incomplete checks are reported as failures.
 
+## Local validation recovery
+
+After coding, a durable local recovery controller owns validation faults. It retains the assignment,
+completed work and review outcomes, waits for foreign resources using observation or an owner-configured
+readiness probe, and resumes validation without relaunching the coder. Confirmed code failures still
+follow the normal coding/review path. Unknown ownership, changed validation authority or exhausted
+budgets hold the task and preserve its worktree.
+
+Recovery can run only configured dependency probes/installers or independently verified bindings to
+installed implementations of declared tools. A bounded read-only diagnosis uses the configured auditor
+and one reserved admission slot; it cannot replace checks or declare success. Verified profiles and
+repair recipes live in the local task database and are reused only with matching execution evidence;
+the original required gates always establish success. Cancellation fences late results and observes
+owned command termination before cleanup. See `packages/backend/docs/local-recovery.md`.
+
 ## Loop Kicker vs Watchdog
 
 - **Loop kicker** (60s): Restarts the orchestrator loop when idle. Runs inside the orchestrator.

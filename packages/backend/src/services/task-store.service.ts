@@ -904,6 +904,8 @@ export class TaskStoreService {
     options: {
       title?: string;
       status?: string;
+      /** Apply only while the task still has this status (checked atomically). */
+      expectedStatus?: string;
       assignee?: string;
       description?: string;
       priority?: number;
@@ -965,9 +967,25 @@ export class TaskStoreService {
         mergedExtra
       );
       vals.push(id, projectId);
-      const updateSql = `UPDATE tasks SET ${sets.join(", ")} WHERE id = $${nextIdx} AND project_id = $${nextIdx + 1}`;
+      let updateSql = `UPDATE tasks SET ${sets.join(", ")} WHERE id = $${nextIdx} AND project_id = $${nextIdx + 1}`;
+      if (options.expectedStatus !== undefined) {
+        updateSql += ` AND status = $${nextIdx + 2}`;
+        vals.push(options.expectedStatus);
+      }
       const modified = await client.execute(updateSql, vals);
       if (modified === 0) {
+        if (options.expectedStatus !== undefined) {
+          const exists = await client.queryOne(
+            toPgParams("SELECT id FROM tasks WHERE id = ? AND project_id = ?"),
+            [id, projectId]
+          );
+          if (exists) {
+            throw new AppError(409, ErrorCodes.TASK_STATE_CHANGED, `Task ${id} changed status`, {
+              issueId: id,
+              expectedStatus: options.expectedStatus,
+            });
+          }
+        }
         throw new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, `Task ${id} not found`, {
           issueId: id,
         });

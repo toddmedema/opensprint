@@ -39,6 +39,7 @@ export type PhaseResolution = (test: TestOutcome, review: ReviewOutcome) => Prom
 const DEFAULT_REVIEW_KEY = "__general_review__";
 
 export interface TaskPhaseCoordinatorOptions {
+  persistReviewOutcome?: (outcome: ReviewOutcome, angle?: string) => Promise<void>;
   reviewAngles?: string[];
   /** When true with reviewAngles non-empty, expect both general and angle outcomes (key __general_review__ + each angle). */
   includeGeneralReview?: boolean;
@@ -59,12 +60,14 @@ export class TaskPhaseCoordinator {
     outcomes: Map<string, ReviewOutcome>
   ) => Promise<ReviewOutcome>;
   private readonly useSynthesis: boolean;
+  private readonly persistReviewOutcome?: TaskPhaseCoordinatorOptions["persistReviewOutcome"];
 
   constructor(
     private readonly taskId: string,
     private readonly resolve: PhaseResolution,
     options?: TaskPhaseCoordinatorOptions
   ) {
+    this.persistReviewOutcome = options?.persistReviewOutcome;
     const angles = options?.reviewAngles?.filter(Boolean) ?? [];
     const includeGeneral = options?.includeGeneralReview === true && angles.length > 0;
     this.expectedReviewKeys = new Set(
@@ -97,6 +100,11 @@ export class TaskPhaseCoordinator {
       return;
     }
     const key = this.resolveReviewKey(angle);
+    if (this.persistReviewOutcome) await this.persistReviewOutcome(outcome, angle);
+    if (this.resolved) {
+      await this.resolutionPromise;
+      return;
+    }
     this.reviewOutcomes.set(key, outcome);
     log.info("Review outcome received", {
       taskId: this.taskId,

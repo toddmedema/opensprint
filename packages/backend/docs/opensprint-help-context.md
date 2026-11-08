@@ -46,6 +46,22 @@ Work state is persisted before agent spawn via `assignment.json` in `.opensprint
 
 Agent admission is cancellable and FIFO. Recheck attempt generation and owning slot after admission and immediately before launch; cancelled or replaced queued attempts must never launch. Concurrency limit changes preserve active accounting. A recovered PID is observation-only until ownership is independently verified: retain the assignment and report uncertain execution instead of killing or requeueing it. A stop request becomes stopped only after observed completion. A terminal result file alone cannot complete an unverified recovered process. Guidance receipts distinguish durable queue acceptance from inclusion in a model turn.
 
+### Local validation recovery
+
+After coding, validation faults enter durable local recovery before another coding attempt is considered.
+Completed code, assignments and reviewer outcomes stay in place. Foreign resources are observed or
+polled with an owner-configured readiness command; a wait does not delete another process's locks.
+Dependency repair requires a failing configured health probe and configured installer in the retained
+workspace. The configured auditor can make a bounded read-only diagnosis through a reserved admission
+slot, including selecting an installed runtime backed by immutable project evidence. It cannot change
+required checks or approve a task. The server independently verifies a runtime binding and reruns the
+same gates before remembering an execution profile or repair recipe in the local task database.
+
+Confirmed code failures follow normal coding/review. Unknown ownership, changed validation authority
+or exhausted budgets hold the task and preserve its worktree. Stop fences late callbacks and observes
+owned command termination before cleanup. See `packages/backend/docs/local-recovery.md` for settings,
+budgets and supported recovery boundaries.
+
 ### Execute collaboration
 
 Select a task in Execute to open its shared workspace. **Work** reuses the task inspector; **Discussion** holds the team thread and composer. The compact header provides people and **Share** without another task selector. `/collaborate/<projectId>` provides the scoped standalone view, with task switching from its title. Local users join automatically. One Share sheet creates named invitations, defaulting to discussion access and 24-hour expiry; optional permissions/expiry and Manage access provide the other controls. Secrets are cleared from the browser address at entry and kept in memory; the server stores only hashes. Host-configured `OPENSPRINT_COLLABORATION_TOKENS` credentials remain supported. Remote participants need a reachable trusted host; invitations do not configure hosting.
