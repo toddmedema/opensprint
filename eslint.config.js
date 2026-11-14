@@ -45,7 +45,7 @@ export default [
   },
   // Backend (Node.js) config
   {
-    files: ["packages/backend/**/*.ts"],
+    files: ["packages/backend/**/*.ts", "packages/forge/**/*.ts"],
     languageOptions: {
       globals: {
         ...globals.node,
@@ -54,7 +54,12 @@ export default [
   },
   // Frontend (React) config
   {
-    files: ["packages/frontend/**/*.ts", "packages/frontend/**/*.tsx"],
+    files: [
+      "packages/frontend/**/*.ts",
+      "packages/frontend/**/*.tsx",
+      "packages/forge-web/**/*.ts",
+      "packages/forge-web/**/*.tsx",
+    ],
     plugins: {
       react,
       "react-hooks": reactHooks,
